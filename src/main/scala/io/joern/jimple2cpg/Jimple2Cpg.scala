@@ -27,8 +27,7 @@ class Jimple2Cpg {
 
   import Jimple2Cpg._
 
-  /**
-    * Creates a CPG from Jimple.
+  /** Creates a CPG from Jimple.
     *
     * @param sourceCodePath The path to the Jimple code or code that can be transformed into Jimple.
     * @param outputPath The path to store the CPG. If `outputPath` is `None`, the CPG is created in-memory.
