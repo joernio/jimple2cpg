@@ -20,6 +20,7 @@ class AstCreationPass(codeDir: String, filenames: List[String], cpg: Cpg, keyPoo
   override def partIterator: Iterator[String] = filenames.iterator
 
   override def runOnPart(filename: String): Iterator[DiffGraph] = {
+    // TODO: Make an AST creator and generate method bodies
     Iterator()
   }
 
