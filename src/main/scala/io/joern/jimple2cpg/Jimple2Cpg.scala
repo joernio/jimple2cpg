@@ -47,7 +47,6 @@ class Jimple2Cpg {
 
     new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
 
-    configureSoot(sourceCodePath)
     val sourceFileExtensions = Set(".class", ".jimple")
     val sourceFileNames      = SourceFiles.determine(Set(sourceCodePath), sourceFileExtensions)
     val astCreator           = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
