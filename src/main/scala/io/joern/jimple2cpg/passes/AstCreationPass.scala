@@ -9,11 +9,11 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.tools.nsc
 
 case class Global(
-                   usedTypes: ConcurrentHashMap[String, Boolean] = new ConcurrentHashMap[String, Boolean]()
-                 )
+    usedTypes: ConcurrentHashMap[String, Boolean] = new ConcurrentHashMap[String, Boolean]()
+)
 
 class AstCreationPass(codeDir: String, filenames: List[String], cpg: Cpg, keyPool: IntervalKeyPool)
-  extends ParallelCpgPass[String](cpg, keyPools = Some(keyPool.split(filenames.size))) {
+    extends ParallelCpgPass[String](cpg, keyPools = Some(keyPool.split(filenames.size))) {
 
   val global: Global = Global()
   private val logger = LoggerFactory.getLogger(classOf[AstCreationPass])
@@ -32,8 +32,7 @@ class AstCreationPass(codeDir: String, filenames: List[String], cpg: Cpg, keyPoo
     }
   }
 
-  /**
-    * Formats the file name the way Soot refers to classes within a class path. e.g.
+  /** Formats the file name the way Soot refers to classes within a class path. e.g.
     * /unrelated/paths/class/path/Foo.class => class.path.Foo
     *
     * @param filename the file name to transform.
