@@ -19,7 +19,7 @@ class JimpleFrontend extends LanguageFrontend {
   }
 }
 
-class JavaSrcCodeToCpgFixture extends CodeToCpgFixture(new JimpleFrontend) {
+class JimpleCodeToCpgFixture extends CodeToCpgFixture(new JimpleFrontend) {
 
   override def writeCodeToFile(sourceCode: String): File = {
     val tmpDir = Files.createTempDirectory("semanticcpgtest").toFile

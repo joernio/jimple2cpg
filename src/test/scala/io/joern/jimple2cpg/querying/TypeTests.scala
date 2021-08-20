@@ -1,11 +1,11 @@
 package io.joern.jimple2cpg.querying
 
-import io.joern.jimple2cpg.testfixtures.JavaSrcCodeToCpgFixture
+import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language._
 import org.scalatest.Ignore
 
 @Ignore
-class TypeTests extends JavaSrcCodeToCpgFixture {
+class TypeTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
     """

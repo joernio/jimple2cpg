@@ -1,9 +1,9 @@
 package io.joern.jimple2cpg.querying
 
-import io.joern.jimple2cpg.testfixtures.JavaSrcCodeToCpgFixture
+import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language._
 
-class MetaDataTests extends JavaSrcCodeToCpgFixture {
+class MetaDataTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
     """
