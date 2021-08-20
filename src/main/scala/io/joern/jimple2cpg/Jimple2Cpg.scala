@@ -16,6 +16,8 @@ import io.shiftleft.semanticcpg.passes.namespacecreator.NamespaceCreator
 import io.shiftleft.semanticcpg.passes.typenodes.{TypeDeclStubCreator, TypeNodePass}
 import io.shiftleft.x2cpg.SourceFiles
 import io.shiftleft.x2cpg.X2Cpg.newEmptyCpg
+import soot.{PhaseOptions, Scene}
+import soot.options.Options
 
 import scala.jdk.CollectionConverters.EnumerationHasAsScala
 
@@ -45,7 +47,8 @@ class Jimple2Cpg {
 
     new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
 
-    val sourceFileExtensions = Set(".java", ".class", ".jimple")
+    configureSoot(sourceCodePath)
+    val sourceFileExtensions = Set(".class", ".jimple")
     val sourceFileNames      = SourceFiles.determine(Set(sourceCodePath), sourceFileExtensions)
     val astCreator           = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
     astCreator.createAndApply()
@@ -69,6 +72,25 @@ class Jimple2Cpg {
     new CfgDominatorPass(cpg).createAndApply()
     new CdgPass(cpg).createAndApply()
     cpg
+  }
+
+  def configureSoot(sourceCodePath: String): Unit = {
+    // set application mode
+    Options.v().set_app(false)
+    Options.v().set_whole_program(false)
+    // make sure classpath is configured correctly
+    Options.v().set_soot_classpath(sourceCodePath)
+    Options.v().set_prepend_classpath(true)
+    // keep debugging info
+    Options.v().set_keep_line_number(true)
+    Options.v().set_keep_offset(true)
+    // ignore library code
+    Options.v().set_no_bodies_for_excluded(true)
+    Options.v().set_allow_phantom_refs(true)
+    // keep variable names
+    PhaseOptions.v().setPhaseOption("jb", "use-original-names:true")
+    Scene.v().loadBasicClasses()
+    Scene.v().loadDynamicClasses()
   }
 
 }
