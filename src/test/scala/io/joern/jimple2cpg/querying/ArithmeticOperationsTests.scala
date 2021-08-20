@@ -1,6 +1,6 @@
 package io.joern.jimple2cpg.querying
 
-import io.joern.jimple2cpg.testfixtures.JavaSrcCodeToCpgFixture
+import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.codepropertygraph.generated.Operators
 import io.shiftleft.codepropertygraph.generated.nodes.Identifier
 import io.shiftleft.semanticcpg.language.{ICallResolver, NoResolve, toNodeTypeStarters}
@@ -8,7 +8,7 @@ import io.shiftleft.semanticcpg.language._
 import org.scalatest.Ignore
 
 @Ignore
-class ArithmeticOperationsTests extends JavaSrcCodeToCpgFixture {
+class ArithmeticOperationsTests extends JimpleCodeToCpgFixture {
 
   implicit val resolver: ICallResolver = NoResolve
 

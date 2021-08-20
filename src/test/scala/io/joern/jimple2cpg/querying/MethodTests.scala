@@ -1,13 +1,13 @@
 package io.joern.jimple2cpg.querying
 
-import io.joern.jimple2cpg.testfixtures.JavaSrcCodeToCpgFixture
+import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language._
 import org.scalatest.Ignore
 
 import java.io.File
 
 @Ignore
-class MethodTests extends JavaSrcCodeToCpgFixture {
+class MethodTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
     """ class Foo {

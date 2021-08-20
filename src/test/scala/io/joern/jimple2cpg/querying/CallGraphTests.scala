@@ -1,12 +1,12 @@
 package io.joern.jimple2cpg.querying
 
-import io.joern.jimple2cpg.testfixtures.JavaSrcCodeToCpgFixture
+import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language.NoResolve
 import io.shiftleft.semanticcpg.language._
 import org.scalatest.Ignore
 
 @Ignore
-class CallGraphTests extends JavaSrcCodeToCpgFixture {
+class CallGraphTests extends JimpleCodeToCpgFixture {
 
   implicit val resolver = NoResolve
 
