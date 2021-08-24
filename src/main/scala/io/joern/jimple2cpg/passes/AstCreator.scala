@@ -1,14 +1,23 @@
 package io.joern.jimple2cpg.passes
 
 import io.shiftleft.codepropertygraph.generated.EdgeTypes
-import io.shiftleft.codepropertygraph.generated.nodes.{NewNamespaceBlock, NewTypeDecl}
+import io.shiftleft.codepropertygraph.generated.nodes.{
+  NewMethod,
+  NewMethodReturn,
+  NewNamespaceBlock,
+  NewTypeDecl
+}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
-import soot.{RefType, SootClass}
+import soot.tagkit.AbstractHost
+import soot.{RefType, SootClass, SootMethod}
 
 import java.io.File
+import scala.jdk.CollectionConverters.CollectionHasAsScala
 
 class AstCreator(filename: String, global: Global) {
+
+  import AstCreator._
 
   val diffGraph: DiffGraph.Builder = DiffGraph.newBuilder
 
@@ -95,7 +104,105 @@ class AstCreator(filename: String, global: Global) {
       .astParentFullName(namespaceBlockFullName)
 
     // TODO: Break into methods
+    val methodAsts = withOrder(
+      typ.getSootClass.getMethods.asScala.toList.sortWith((x, y) => x.getName > y.getName)
+    ) { (m, order) =>
+      astForMethod(m, typ, order)
+    }
 
     Ast(typeDecl)
+      .withChildren(methodAsts)
+  }
+
+  private def astForMethod(
+      methodDeclaration: SootMethod,
+      typeDecl: RefType,
+      childNum: Int
+  ): Ast = {
+    val methodNode = createMethodNode(methodDeclaration, typeDecl, childNum)
+    val parameterAsts = withOrder(methodDeclaration.retrieveActiveBody().getParameterLocals) {
+      (p, order) =>
+//      astForParameter(p, order)
+    }
+    val lastOrder = 2 + parameterAsts.size
+    Ast(methodNode)
+//      .withChildren(parameterAsts)
+//      .withChild(astForMethodBody(methodDeclaration.getBody.asScala, lastOrder))
+      .withChild(astForMethodReturn(methodDeclaration))
+  }
+
+  private def astForMethodReturn(methodDeclaration: SootMethod): Ast = {
+    val typeFullName = registerType(methodDeclaration.getReturnType.toQuotedString)
+    val methodReturnNode =
+      NewMethodReturn()
+        .order(methodDeclaration.getParameterCount + 2)
+        .typeFullName(typeFullName)
+        .code(methodDeclaration.getReturnType.toQuotedString)
+        .lineNumber(line(methodDeclaration))
+    Ast(methodReturnNode)
+  }
+
+  private def createMethodNode(
+      methodDeclaration: SootMethod,
+      typeDecl: RefType,
+      childNum: Int
+  ) = {
+    val fullName = methodFullName(typeDecl, methodDeclaration)
+    val code =
+      s"${methodDeclaration.getReturnType.toQuotedString} ${methodDeclaration.getName}${paramListSignature(methodDeclaration, withParams = true)}"
+    val methodNode = NewMethod()
+      .name(methodDeclaration.getName)
+      .fullName(fullName)
+      .code(code)
+      .signature(
+        methodDeclaration.getReturnType.toQuotedString + paramListSignature(methodDeclaration)
+      )
+      .isExternal(false)
+      .order(childNum)
+      .filename(filename)
+      .lineNumber(line(methodDeclaration))
+      .columnNumber(column(methodDeclaration))
+    methodNode
+  }
+
+  private def methodFullName(
+      typeDecl: RefType,
+      methodDeclaration: SootMethod
+  ): String = {
+    val typeName   = typeDecl.toQuotedString
+    val returnType = methodDeclaration.getReturnType.toQuotedString
+    val methodName = methodDeclaration.getName
+    s"$typeName.$methodName:$returnType${paramListSignature(methodDeclaration)}"
+  }
+
+  private def paramListSignature(methodDeclaration: SootMethod, withParams: Boolean = false) = {
+    val paramTypes = methodDeclaration.getParameterTypes.asScala.map(_.toQuotedString)
+    if (!withParams) {
+      "(" + paramTypes.mkString(",") + ")"
+    } else {
+      "(" + paramTypes.zipWithIndex.map(x => { s"${x._1} param${x._2 + 1}" }).mkString(", ") + ")"
+    }
+  }
+}
+
+object AstCreator {
+  def line(node: AbstractHost): Option[Integer] = {
+    Option(node.getJavaSourceStartLineNumber)
+  }
+
+  def column(node: AbstractHost): Option[Integer] = {
+    Option(node.getJavaSourceStartColumnNumber)
+  }
+
+  def withOrder[T <: Any, X](nodeList: java.util.List[T])(f: (T, Int) => X): Seq[X] = {
+    nodeList.asScala.zipWithIndex.map { case (x, i) =>
+      f(x, i + 1)
+    }.toSeq
+  }
+
+  def withOrder[T <: Any, X](nodeList: Iterable[T])(f: (T, Int) => X): Seq[X] = {
+    nodeList.zipWithIndex.map { case (x, i) =>
+      f(x, i + 1)
+    }.toSeq
   }
 }

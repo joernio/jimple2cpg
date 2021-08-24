@@ -3,7 +3,7 @@ package io.joern.jimple2cpg.passes
 import io.shiftleft.codepropertygraph.Cpg
 import io.shiftleft.passes.{DiffGraph, IntervalKeyPool, ParallelCpgPass}
 import org.slf4j.LoggerFactory
-import soot.{Scene, SootClass}
+import soot.Scene
 
 import java.util.concurrent.ConcurrentHashMap
 import scala.tools.nsc

@@ -4,7 +4,6 @@ import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language._
 import org.scalatest.Ignore
 
-@Ignore
 class MethodReturnTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
@@ -17,7 +16,7 @@ class MethodReturnTests extends JimpleCodeToCpgFixture {
     val List(x) = cpg.method.name("foo").methodReturn.typeFullName("int").l
     x.code shouldBe "int"
     x.typeFullName shouldBe "int"
-    x.lineNumber shouldBe Some(2)
+    x.lineNumber shouldBe Some(1)
     // we expect the METHOD_RETURN node to be the right-most
     // child so that when traversing the AST from left to
     // right in CFG construction, we visit it last.

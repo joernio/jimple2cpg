@@ -6,7 +6,6 @@ import org.scalatest.Ignore
 
 import java.io.File
 
-@Ignore
 class MethodTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
@@ -26,16 +25,14 @@ class MethodTests extends JimpleCodeToCpgFixture {
     x.isExternal shouldBe false
     x.order shouldBe 1
     x.filename.startsWith(File.separator) shouldBe true
-    x.filename.endsWith(".java") shouldBe true
-    x.lineNumber shouldBe Some(2)
-    x.lineNumberEnd shouldBe Some(4)
-    x.columnNumber shouldBe Some(4)
-    x.columnNumberEnd shouldBe Some(4)
+    x.filename.endsWith(".class") shouldBe true
+    x.lineNumber shouldBe Some(-1)
+    x.columnNumber shouldBe Some(-1)
   }
 
-  "should return correct number of lines" in {
-    cpg.method.name("foo").numberOfLines.l shouldBe List(3)
-  }
+//  "should return correct number of lines" in {
+//    cpg.method.name("foo").numberOfLines.l shouldBe List(3)
+//  }
 
   "should allow traversing to parameters" in {
     cpg.method.name("foo").parameter.name.toSet shouldBe Set("param1", "param2")
