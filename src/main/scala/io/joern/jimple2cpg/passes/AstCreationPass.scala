@@ -23,10 +23,12 @@ class AstCreationPass(codeDir: String, filenames: List[String], cpg: Cpg, keyPoo
   override def runOnPart(filename: String): Iterator[DiffGraph] = {
     val qualifiedClassName = getQualifiedClassPath(filename)
     try {
+
       new AstCreator(filename, global)
-        .createAst(Scene.v().tryLoadClass(qualifiedClassName, SootClass.BODIES))
+        .createAst(Scene.v().loadClassAndSupport(qualifiedClassName))
     } catch {
       case e: Exception =>
+        e.printStackTrace()
         logger.warn("Cannot parse: " + filename, e)
         Iterator()
     }

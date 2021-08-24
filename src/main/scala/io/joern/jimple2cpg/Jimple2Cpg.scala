@@ -39,8 +39,9 @@ class Jimple2Cpg {
       sourceCodePath: String,
       outputPath: Option[String] = None
   ): Cpg = {
+    configureSoot(sourceCodePath)
+    val cpg = newEmptyCpg(outputPath)
 
-    val cpg             = newEmptyCpg(outputPath)
     val metaDataKeyPool = new IntervalKeyPool(1, 100)
     val typesKeyPool    = new IntervalKeyPool(100, 1000100)
     val methodKeyPool   = new IntervalKeyPool(first = 1000100, last = Long.MaxValue)

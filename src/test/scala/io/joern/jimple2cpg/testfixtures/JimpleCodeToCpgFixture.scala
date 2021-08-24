@@ -31,6 +31,9 @@ class JimpleCodeToCpgFixture extends CodeToCpgFixture(new JimpleFrontend) {
     tmpDir
   }
 
+  /**
+    * Compiles the source code with debugging info.
+    */
   def compileJava(sourceCodeFile: File): Unit = {
     val javac = getJavaCompiler
     val fileManager = javac.getStandardFileManager(null, null, null)
@@ -51,6 +54,9 @@ class JimpleCodeToCpgFixture extends CodeToCpgFixture(new JimpleFrontend) {
       false).forEach(x => new File(x.toUri).deleteOnExit())
   }
 
+  /**
+    * Programmatically obtains the system Java compiler.
+    */
   def getJavaCompiler: JavaCompiler = {
     Option(ToolProvider.getSystemJavaCompiler) match {
       case Some(javac) => javac
