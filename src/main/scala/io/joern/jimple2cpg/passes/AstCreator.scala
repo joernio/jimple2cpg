@@ -1,16 +1,11 @@
 package io.joern.jimple2cpg.passes
 
 import io.shiftleft.codepropertygraph.generated.EdgeTypes
-import io.shiftleft.codepropertygraph.generated.nodes.{
-  NewMethod,
-  NewMethodReturn,
-  NewNamespaceBlock,
-  NewTypeDecl
-}
+import io.shiftleft.codepropertygraph.generated.nodes.{NewMethod, NewMethodParameterIn, NewMethodReturn, NewNamespaceBlock, NewTypeDecl}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import soot.tagkit.AbstractHost
-import soot.{RefType, SootClass, SootMethod}
+import soot.{Local, RefType, SootClass, SootMethod}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
@@ -122,13 +117,25 @@ class AstCreator(filename: String, global: Global) {
     val methodNode = createMethodNode(methodDeclaration, typeDecl, childNum)
     val parameterAsts = withOrder(methodDeclaration.retrieveActiveBody().getParameterLocals) {
       (p, order) =>
-//      astForParameter(p, order)
+      astForParameter(p, order)
     }
     val lastOrder = 2 + parameterAsts.size
     Ast(methodNode)
-//      .withChildren(parameterAsts)
+      .withChildren(parameterAsts)
 //      .withChild(astForMethodBody(methodDeclaration.getBody.asScala, lastOrder))
       .withChild(astForMethodReturn(methodDeclaration))
+  }
+
+  private def astForParameter(parameter: Local, childNum: Int): Ast = {
+    val typeFullName = registerType(parameter.getType.toQuotedString)
+    val parameterNode = NewMethodParameterIn()
+      .name(parameter.getName)
+      .code(parameter.toString)
+      .typeFullName(typeFullName)
+      .order(childNum)
+      .lineNumber(-1)
+      .columnNumber(-1)
+    Ast(parameterNode)
   }
 
   private def astForMethodReturn(methodDeclaration: SootMethod): Ast = {
