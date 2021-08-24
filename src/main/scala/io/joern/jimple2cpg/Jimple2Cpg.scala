@@ -16,7 +16,7 @@ import io.shiftleft.semanticcpg.passes.namespacecreator.NamespaceCreator
 import io.shiftleft.semanticcpg.passes.typenodes.{TypeDeclStubCreator, TypeNodePass}
 import io.shiftleft.x2cpg.SourceFiles
 import io.shiftleft.x2cpg.X2Cpg.newEmptyCpg
-import soot.{PhaseOptions, Scene}
+import soot.{G, PhaseOptions, Scene}
 import soot.options.Options
 
 import scala.jdk.CollectionConverters.EnumerationHasAsScala
@@ -71,10 +71,13 @@ class Jimple2Cpg {
 
     new CfgDominatorPass(cpg).createAndApply()
     new CdgPass(cpg).createAndApply()
+
+    closeSoot()
+
     cpg
   }
 
-  def configureSoot(sourceCodePath: String): Unit = {
+  private def configureSoot(sourceCodePath: String): Unit = {
     // set application mode
     Options.v().set_app(false)
     Options.v().set_whole_program(false)
@@ -91,6 +94,10 @@ class Jimple2Cpg {
     PhaseOptions.v().setPhaseOption("jb", "use-original-names:true")
     Scene.v().loadBasicClasses()
     Scene.v().loadDynamicClasses()
+  }
+
+  private def closeSoot(): Unit = {
+    G.reset()
   }
 
 }

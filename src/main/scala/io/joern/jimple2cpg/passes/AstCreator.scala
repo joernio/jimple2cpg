@@ -1,7 +1,13 @@
 package io.joern.jimple2cpg.passes
 
 import io.shiftleft.codepropertygraph.generated.EdgeTypes
-import io.shiftleft.codepropertygraph.generated.nodes.{NewMethod, NewMethodParameterIn, NewMethodReturn, NewNamespaceBlock, NewTypeDecl}
+import io.shiftleft.codepropertygraph.generated.nodes.{
+  NewMethod,
+  NewMethodParameterIn,
+  NewMethodReturn,
+  NewNamespaceBlock,
+  NewTypeDecl
+}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import soot.tagkit.AbstractHost
@@ -117,7 +123,7 @@ class AstCreator(filename: String, global: Global) {
     val methodNode = createMethodNode(methodDeclaration, typeDecl, childNum)
     val parameterAsts = withOrder(methodDeclaration.retrieveActiveBody().getParameterLocals) {
       (p, order) =>
-      astForParameter(p, order)
+        astForParameter(p, order)
     }
     val lastOrder = 2 + parameterAsts.size
     Ast(methodNode)
