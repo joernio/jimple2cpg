@@ -1,6 +1,6 @@
 package io.joern.jimple2cpg.passes
 
-import io.shiftleft.codepropertygraph.generated.{EdgeTypes, Operators}
+import io.shiftleft.codepropertygraph.generated.{DispatchTypes, EdgeTypes, Operators}
 import io.shiftleft.codepropertygraph.generated.nodes.{
   NewBlock,
   NewCall,
@@ -17,27 +17,48 @@ import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import org.slf4j.LoggerFactory
 import soot.jimple.{
+  AddExpr,
+  AndExpr,
   AssignStmt,
   BinopExpr,
   CaughtExceptionRef,
+  CmpExpr,
+  CmpgExpr,
+  CmplExpr,
   Constant,
+  DivExpr,
+  EqExpr,
+  Expr,
+  GeExpr,
   GotoStmt,
+  GtExpr,
   IdentityRef,
   IdentityStmt,
   IfStmt,
   InstanceFieldRef,
   InvokeExpr,
   InvokeStmt,
+  LeExpr,
+  LengthExpr,
   LookupSwitchStmt,
+  LtExpr,
   MonitorStmt,
+  MulExpr,
   NewArrayExpr,
   NewExpr,
+  OrExpr,
+  RemExpr,
   ReturnStmt,
   ReturnVoidStmt,
+  ShlExpr,
+  ShrExpr,
   StaticFieldRef,
   Stmt,
+  SubExpr,
   TableSwitchStmt,
-  ThrowStmt
+  ThrowStmt,
+  UshrExpr,
+  XorExpr
 }
 import soot.tagkit.{AbstractHost, Host}
 import soot.{Body, Local, RefType, SootClass, SootMethod}
@@ -210,9 +231,45 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  private def astForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
-    value match {
-      case x: BinopExpr          => Seq()
+  def astForBinopExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
+    val operatorName = binOp.getSymbol match {
+      case AddExpr  => Operators.addition
+      case SubExpr  => Operators.subtraction
+      case MulExpr  => Operators.multiplication
+      case DivExpr  => Operators.division
+      case RemExpr  => Operators.modulo
+      case GeExpr   => Operators.greaterEqualsThan
+      case GtExpr   => Operators.greaterThan
+      case LeExpr   => Operators.lessEqualsThan
+      case LtExpr   => Operators.lessThan
+      case ShlExpr  => Operators.shiftLeft
+      case ShrExpr  => Operators.logicalShiftRight
+      case UshrExpr => Operators.arithmeticShiftRight
+      case CmpExpr  => Operators.compare
+      case CmpgExpr => Operators.compare
+      case CmplExpr => Operators.compare
+      case AndExpr  => Operators.and
+      case OrExpr   => Operators.or
+      case XorExpr  => Operators.xor
+      case EqExpr   => Operators.equals
+      case _        => ""
+    }
+
+    val callNode = NewCall()
+      .name(operatorName)
+      .methodFullName(operatorName)
+      .dispatchType(DispatchTypes.STATIC_DISPATCH)
+      .code(binOp.toString)
+      .argumentIndex(order)
+      .order(order)
+
+    val args = astForValue(binOp.getOp1, 0, parentUnit) ++ astForValue(binOp.getOp2, 1, parentUnit)
+    callAst(callNode, args)
+  }
+
+  private def astsForExpression(expr: Expr, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
+    expr match {
+      case x: BinopExpr          => Seq(astForBinopExpr(x, order, parentUnit))
       case x: Local              => Seq()
       case x: IdentityRef        => Seq()
       case x: Constant           => Seq()
@@ -220,6 +277,21 @@ class AstCreator(filename: String, global: Global) {
       case x: StaticFieldRef     => Seq()
       case x: NewExpr            => Seq()
       case x: NewArrayExpr       => Seq()
+      case x: CaughtExceptionRef => Seq()
+      case x: InstanceFieldRef   => Seq()
+      case x =>
+        logger.warn(s"Unhandled soot.Value type ${x.getClass}")
+        Seq()
+    }
+  }
+
+  private def astForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
+    value match {
+      case x: Expr               => astsForExpression(x, order, parentUnit)
+      case x: Local              => Seq()
+      case x: IdentityRef        => Seq()
+      case x: Constant           => Seq()
+      case x: StaticFieldRef     => Seq()
       case x: CaughtExceptionRef => Seq()
       case x: InstanceFieldRef   => Seq()
       case x =>
