@@ -1,7 +1,9 @@
 package io.joern.jimple2cpg.passes
 
-import io.shiftleft.codepropertygraph.generated.EdgeTypes
+import io.shiftleft.codepropertygraph.generated.{EdgeTypes, Operators}
 import io.shiftleft.codepropertygraph.generated.nodes.{
+  NewBlock,
+  NewCall,
   NewMethod,
   NewMethodParameterIn,
   NewMethodReturn,
@@ -10,8 +12,32 @@ import io.shiftleft.codepropertygraph.generated.nodes.{
 }
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
-import soot.tagkit.AbstractHost
-import soot.{Local, RefType, SootClass, SootMethod}
+import org.slf4j.LoggerFactory
+import soot.jimple.{
+  AssignStmt,
+  BinopExpr,
+  CaughtExceptionRef,
+  Constant,
+  GotoStmt,
+  IdentityRef,
+  IdentityStmt,
+  IfStmt,
+  InstanceFieldRef,
+  InvokeExpr,
+  InvokeStmt,
+  LookupSwitchStmt,
+  MonitorStmt,
+  NewArrayExpr,
+  NewExpr,
+  ReturnStmt,
+  ReturnVoidStmt,
+  StaticFieldRef,
+  Stmt,
+  TableSwitchStmt,
+  ThrowStmt
+}
+import soot.tagkit.{AbstractHost, Host}
+import soot.{Body, Local, RefType, SootClass, SootMethod}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
@@ -20,6 +46,7 @@ class AstCreator(filename: String, global: Global) {
 
   import AstCreator._
 
+  private val logger               = LoggerFactory.getLogger(classOf[AstCreationPass])
   val diffGraph: DiffGraph.Builder = DiffGraph.newBuilder
 
   /** Add `typeName` to a global map and return it. The
@@ -104,12 +131,13 @@ class AstCreator(filename: String, global: Global) {
       .astParentType("NAMESPACE_BLOCK")
       .astParentFullName(namespaceBlockFullName)
 
-    // TODO: Break into methods
     val methodAsts = withOrder(
       typ.getSootClass.getMethods.asScala.toList.sortWith((x, y) => x.getName > y.getName)
     ) { (m, order) =>
       astForMethod(m, typ, order)
     }
+
+    // TODO: Fields as Member nodes
 
     Ast(typeDecl)
       .withChildren(methodAsts)
@@ -121,15 +149,22 @@ class AstCreator(filename: String, global: Global) {
       childNum: Int
   ): Ast = {
     val methodNode = createMethodNode(methodDeclaration, typeDecl, childNum)
-    val parameterAsts = withOrder(methodDeclaration.retrieveActiveBody().getParameterLocals) {
-      (p, order) =>
+    val lastOrder  = 2 + methodDeclaration.getParameterCount
+    val methodRoot = Ast(methodNode).withChild(astForMethodReturn(methodDeclaration))
+
+    try {
+      val methodBody = methodDeclaration.retrieveActiveBody()
+      val parameterAsts = withOrder(methodBody.getParameterLocals) { (p, order) =>
         astForParameter(p, order)
+      }
+      methodRoot
+        .withChildren(parameterAsts)
+        .withChild(astForMethodBody(methodBody, lastOrder))
+    } catch {
+      case e: RuntimeException => logger.warn("Unable to parse method body.", e)
     }
-    val lastOrder = 2 + parameterAsts.size
-    Ast(methodNode)
-      .withChildren(parameterAsts)
-//      .withChild(astForMethodBody(methodDeclaration.getBody.asScala, lastOrder))
-      .withChild(astForMethodReturn(methodDeclaration))
+
+    methodRoot
   }
 
   private def astForParameter(parameter: Local, childNum: Int): Ast = {
@@ -142,6 +177,65 @@ class AstCreator(filename: String, global: Global) {
       .lineNumber(-1)
       .columnNumber(-1)
     Ast(parameterNode)
+  }
+
+  private def astForMethodBody(body: Body, order: Int): Ast = {
+    val block = NewBlock(order = order, lineNumber = line(body), columnNumber = column(body))
+    Ast(block).withChildren(
+      withOrder(body.getUnits.asScala) { (x, order) =>
+        astsForStatement(x, order)
+      }.flatten
+    )
+  }
+
+  private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
+    statement match {
+      case x: AssignStmt       => Seq(astForAssign(x, order))
+      case x: IfStmt           => Seq()
+      case x: GotoStmt         => Seq()
+      case x: IdentityStmt     => Seq()
+      case x: LookupSwitchStmt => Seq()
+      case x: TableSwitchStmt  => Seq()
+      case x: InvokeStmt       => Seq()
+      case x: ReturnStmt       => Seq()
+      case x: ReturnVoidStmt   => Seq()
+      case x: ThrowStmt        => Seq()
+      case x: MonitorStmt      => Seq()
+      case x =>
+        logger.warn(s"Unhandled soot.Unit type ${x.getClass}")
+        Seq()
+    }
+  }
+
+  private def astForValue(value: soot.Value, order: Int): Ast = {
+    value match {
+      case x: BinopExpr          => Ast()
+      case x: Local              => Ast()
+      case x: IdentityRef        => Ast()
+      case x: Constant           => Ast()
+      case x: InvokeExpr         => Ast()
+      case x: StaticFieldRef     => Ast()
+      case x: NewExpr            => Ast()
+      case x: NewArrayExpr       => Ast()
+      case x: CaughtExceptionRef => Ast()
+      case x: InstanceFieldRef   => Ast()
+      case x =>
+        logger.warn(s"Unhandled soot.Value type ${x.getClass}")
+        Ast()
+    }
+  }
+
+  def astForAssign(assignStmt: AssignStmt, order: Int): Ast = {
+    Ast(
+      NewCall()
+        .name(Operators.assignment)
+        .lineNumber(line(assignStmt))
+        .columnNumber(column(assignStmt))
+        .methodFullName(Operators.assignment)
+        .order(order)
+    )
+      .withChild(astForValue(assignStmt.getLeftOp, 1))
+      .withChild(astForValue(assignStmt.getRightOp, 2))
   }
 
   private def astForMethodReturn(methodDeclaration: SootMethod): Ast = {
@@ -199,11 +293,11 @@ class AstCreator(filename: String, global: Global) {
 }
 
 object AstCreator {
-  def line(node: AbstractHost): Option[Integer] = {
+  def line(node: Host): Option[Integer] = {
     Option(node.getJavaSourceStartLineNumber)
   }
 
-  def column(node: AbstractHost): Option[Integer] = {
+  def column(node: Host): Option[Integer] = {
     Option(node.getJavaSourceStartColumnNumber)
   }
 
