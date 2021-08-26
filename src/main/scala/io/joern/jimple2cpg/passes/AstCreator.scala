@@ -241,17 +241,17 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
     statement match {
-      case x: AssignStmt       => astsForAssignment(x, order)
-      case x: IfStmt           => Seq()
-      case x: GotoStmt         => Seq()
-      case x: IdentityStmt     => Seq()
-      case x: LookupSwitchStmt => Seq()
-      case x: TableSwitchStmt  => Seq()
-      case x: InvokeStmt       => Seq()
-      case x: ReturnStmt       => astsForReturnNode(x, order)
-      case x: ReturnVoidStmt   => astsForReturnVoidNode(x, order)
-      case x: ThrowStmt        => Seq()
-      case x: MonitorStmt      => Seq()
+      case x: AssignStmt => astsForAssignment(x, order)
+//      case x: IfStmt           => Seq()
+//      case x: GotoStmt         => Seq()
+//      case x: IdentityStmt     => Seq()
+//      case x: LookupSwitchStmt => Seq()
+//      case x: TableSwitchStmt  => Seq()
+//      case x: InvokeStmt       => Seq()
+      case x: ReturnStmt     => astsForReturnNode(x, order)
+      case x: ReturnVoidStmt => astsForReturnVoidNode(x, order)
+//      case x: ThrowStmt        => Seq()
+//      case x: MonitorStmt      => Seq()
       case x =>
         logger.warn(s"Unhandled soot.Unit type ${x.getClass}")
         Seq()
@@ -291,16 +291,16 @@ class AstCreator(filename: String, global: Global) {
       .order(order)
 
     val args =
-      astsForValue(binOp.getOp1, 0, parentUnit) ++ astsForValue(binOp.getOp2, 1, parentUnit)
+      astsForValue(binOp.getOp1, 1, parentUnit) ++ astsForValue(binOp.getOp2, 2, parentUnit)
     callAst(callNode, args)
   }
 
   private def astsForExpression(expr: Expr, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     expr match {
-      case x: BinopExpr    => Seq(astForBinOpExpr(x, order, parentUnit))
-      case x: InvokeExpr   => Seq()
-      case x: NewExpr      => Seq()
-      case x: NewArrayExpr => Seq()
+      case x: BinopExpr => Seq(astForBinOpExpr(x, order, parentUnit))
+//      case x: InvokeExpr   => Seq()
+//      case x: NewExpr      => Seq()
+//      case x: NewArrayExpr => Seq()
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()
@@ -309,17 +309,32 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
-      case x: Expr               => astsForExpression(x, order, parentUnit)
-      case x: Local              => Seq()
-      case x: IdentityRef        => Seq()
-      case x: Constant           => Seq(astForConstantExpr(x, order))
-      case x: StaticFieldRef     => Seq()
-      case x: CaughtExceptionRef => Seq()
-      case x: InstanceFieldRef   => Seq()
+      case x: Expr  => astsForExpression(x, order, parentUnit)
+      case x: Local => Seq(astForLocal(x, order, parentUnit))
+//      case x: IdentityRef        => Seq()
+      case x: Constant => Seq(astForConstantExpr(x, order))
+//      case x: StaticFieldRef     => Seq()
+//      case x: CaughtExceptionRef => Seq()
+//      case x: InstanceFieldRef   => Seq()
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()
     }
+  }
+
+  private def astForLocal(local: Local, order: Int, parentUnit: soot.Unit): Ast = {
+    val name         = local.getName
+    val typeFullName = registerType(local.getType.toQuotedString)
+    Ast(
+      NewIdentifier()
+        .name(name)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .order(order)
+        .argumentIndex(order)
+        .code(name)
+        .typeFullName(typeFullName)
+    )
   }
 
   /** Creates the AST for assignment statements keeping in mind Jimple is a 3-address code language.
@@ -331,14 +346,7 @@ class AstCreator(filename: String, global: Global) {
     val code         = leftOp.getType.toQuotedString + " " + leftOp.getName
     val typeFullName = registerType(leftOp.getType.toQuotedString)
 
-    val identifier = NewIdentifier()
-      .name(name)
-      .lineNumber(line(assignStmt))
-      .columnNumber(column(assignStmt))
-      .order(1)
-      .argumentIndex(1)
-      .code(name)
-      .typeFullName(typeFullName)
+    val identifier = astForLocal(leftOp, 1, assignStmt)
     val assignment = NewCall()
       .name(Operators.assignment)
       .code(s"$name = ${initializer.toString()}")
@@ -348,7 +356,7 @@ class AstCreator(filename: String, global: Global) {
       .build
 
     val initAsts       = astsForValue(initializer, 2, assignStmt)
-    val initializerAst = Seq(callAst(assignment, Seq(Ast(identifier)) ++ initAsts))
+    val initializerAst = Seq(callAst(assignment, Seq(identifier) ++ initAsts))
     Seq(
       Ast(
         NewLocal().name(name).code(code).typeFullName(typeFullName).order(order)
