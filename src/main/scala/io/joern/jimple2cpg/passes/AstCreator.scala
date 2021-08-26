@@ -5,12 +5,15 @@ import io.shiftleft.codepropertygraph.generated.nodes.{
   NewBlock,
   NewCall,
   NewIdentifier,
+  NewLiteral,
   NewLocal,
+  NewMember,
   NewMethod,
   NewMethodParameterIn,
   NewMethodReturn,
   NewNamespaceBlock,
   NewNode,
+  NewReturn,
   NewTypeDecl
 }
 import io.shiftleft.passes.DiffGraph
@@ -22,13 +25,16 @@ import soot.jimple.{
   AssignStmt,
   BinopExpr,
   CaughtExceptionRef,
+  ClassConstant,
   CmpExpr,
   CmpgExpr,
   CmplExpr,
   Constant,
   DivExpr,
+  DoubleConstant,
   EqExpr,
   Expr,
+  FloatConstant,
   GeExpr,
   GotoStmt,
   GtExpr,
@@ -36,16 +42,18 @@ import soot.jimple.{
   IdentityStmt,
   IfStmt,
   InstanceFieldRef,
+  IntConstant,
   InvokeExpr,
   InvokeStmt,
   LeExpr,
-  LengthExpr,
+  LongConstant,
   LookupSwitchStmt,
   LtExpr,
   MonitorStmt,
   MulExpr,
   NewArrayExpr,
   NewExpr,
+  NullConstant,
   OrExpr,
   RemExpr,
   ReturnStmt,
@@ -53,15 +61,15 @@ import soot.jimple.{
   ShlExpr,
   ShrExpr,
   StaticFieldRef,
-  Stmt,
+  StringConstant,
   SubExpr,
   TableSwitchStmt,
   ThrowStmt,
   UshrExpr,
   XorExpr
 }
-import soot.tagkit.{AbstractHost, Host}
-import soot.{Body, Local, RefType, SootClass, SootMethod}
+import soot.tagkit.Host
+import soot.{Body, Local, RefType, SootClass, SootField, SootMethod}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
@@ -161,10 +169,29 @@ class AstCreator(filename: String, global: Global) {
       astForMethod(m, typ, order)
     }
 
-    // TODO: Fields as Member nodes
+    val memberAsts = typ.getSootClass.getFields.asScala
+      .filter(_.isDeclared)
+      .zipWithIndex
+      .map { case (v, i) =>
+        astForField(v, i + methodAsts.size + 1)
+      }
+      .toList
 
     Ast(typeDecl)
+      .withChildren(memberAsts)
       .withChildren(methodAsts)
+  }
+
+  private def astForField(v: SootField, order: Int): Ast = {
+    val typeFullName = registerType(v.getType.toQuotedString)
+    val name         = v.getName
+    Ast(
+      NewMember()
+        .name(name)
+        .typeFullName(typeFullName)
+        .order(order)
+        .code(s"$typeFullName $name")
+    )
   }
 
   private def astForMethod(
@@ -174,21 +201,21 @@ class AstCreator(filename: String, global: Global) {
   ): Ast = {
     val methodNode = createMethodNode(methodDeclaration, typeDecl, childNum)
     val lastOrder  = 2 + methodDeclaration.getParameterCount
-    val methodRoot = Ast(methodNode).withChild(astForMethodReturn(methodDeclaration))
-
     try {
       val methodBody = methodDeclaration.retrieveActiveBody()
       val parameterAsts = withOrder(methodBody.getParameterLocals) { (p, order) =>
         astForParameter(p, order)
       }
-      methodRoot
+      Ast(methodNode)
         .withChildren(parameterAsts)
         .withChild(astForMethodBody(methodBody, lastOrder))
+        .withChild(astForMethodReturn(methodDeclaration))
     } catch {
-      case e: RuntimeException => logger.warn("Unable to parse method body.", e)
+      case e: RuntimeException =>
+        logger.warn("Unable to parse method body.", e)
+        Ast(methodNode)
+          .withChild(astForMethodReturn(methodDeclaration))
     }
-
-    methodRoot
   }
 
   private def astForParameter(parameter: Local, childNum: Int): Ast = {
@@ -214,15 +241,15 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
     statement match {
-      case x: AssignStmt       => astForAssignment(x, order)
+      case x: AssignStmt       => astsForAssignment(x, order)
       case x: IfStmt           => Seq()
       case x: GotoStmt         => Seq()
       case x: IdentityStmt     => Seq()
       case x: LookupSwitchStmt => Seq()
       case x: TableSwitchStmt  => Seq()
       case x: InvokeStmt       => Seq()
-      case x: ReturnStmt       => Seq()
-      case x: ReturnVoidStmt   => Seq()
+      case x: ReturnStmt       => astsForReturnNode(x, order)
+      case x: ReturnVoidStmt   => astsForReturnVoidNode(x, order)
       case x: ThrowStmt        => Seq()
       case x: MonitorStmt      => Seq()
       case x =>
@@ -231,28 +258,28 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  def astForBinopExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
-    val operatorName = binOp.getSymbol match {
-      case AddExpr  => Operators.addition
-      case SubExpr  => Operators.subtraction
-      case MulExpr  => Operators.multiplication
-      case DivExpr  => Operators.division
-      case RemExpr  => Operators.modulo
-      case GeExpr   => Operators.greaterEqualsThan
-      case GtExpr   => Operators.greaterThan
-      case LeExpr   => Operators.lessEqualsThan
-      case LtExpr   => Operators.lessThan
-      case ShlExpr  => Operators.shiftLeft
-      case ShrExpr  => Operators.logicalShiftRight
-      case UshrExpr => Operators.arithmeticShiftRight
-      case CmpExpr  => Operators.compare
-      case CmpgExpr => Operators.compare
-      case CmplExpr => Operators.compare
-      case AndExpr  => Operators.and
-      case OrExpr   => Operators.or
-      case XorExpr  => Operators.xor
-      case EqExpr   => Operators.equals
-      case _        => ""
+  def astForBinOpExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
+    val operatorName = binOp match {
+      case _: AddExpr  => Operators.addition
+      case _: SubExpr  => Operators.subtraction
+      case _: MulExpr  => Operators.multiplication
+      case _: DivExpr  => Operators.division
+      case _: RemExpr  => Operators.modulo
+      case _: GeExpr   => Operators.greaterEqualsThan
+      case _: GtExpr   => Operators.greaterThan
+      case _: LeExpr   => Operators.lessEqualsThan
+      case _: LtExpr   => Operators.lessThan
+      case _: ShlExpr  => Operators.shiftLeft
+      case _: ShrExpr  => Operators.logicalShiftRight
+      case _: UshrExpr => Operators.arithmeticShiftRight
+      case _: CmpExpr  => Operators.compare
+      case _: CmpgExpr => Operators.compare
+      case _: CmplExpr => Operators.compare
+      case _: AndExpr  => Operators.and
+      case _: OrExpr   => Operators.or
+      case _: XorExpr  => Operators.xor
+      case _: EqExpr   => Operators.equals
+      case _           => ""
     }
 
     val callNode = NewCall()
@@ -263,34 +290,29 @@ class AstCreator(filename: String, global: Global) {
       .argumentIndex(order)
       .order(order)
 
-    val args = astForValue(binOp.getOp1, 0, parentUnit) ++ astForValue(binOp.getOp2, 1, parentUnit)
+    val args =
+      astsForValue(binOp.getOp1, 0, parentUnit) ++ astsForValue(binOp.getOp2, 1, parentUnit)
     callAst(callNode, args)
   }
 
   private def astsForExpression(expr: Expr, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     expr match {
-      case x: BinopExpr          => Seq(astForBinopExpr(x, order, parentUnit))
-      case x: Local              => Seq()
-      case x: IdentityRef        => Seq()
-      case x: Constant           => Seq()
-      case x: InvokeExpr         => Seq()
-      case x: StaticFieldRef     => Seq()
-      case x: NewExpr            => Seq()
-      case x: NewArrayExpr       => Seq()
-      case x: CaughtExceptionRef => Seq()
-      case x: InstanceFieldRef   => Seq()
+      case x: BinopExpr    => Seq(astForBinOpExpr(x, order, parentUnit))
+      case x: InvokeExpr   => Seq()
+      case x: NewExpr      => Seq()
+      case x: NewArrayExpr => Seq()
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()
     }
   }
 
-  private def astForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
+  private def astsForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
       case x: Expr               => astsForExpression(x, order, parentUnit)
       case x: Local              => Seq()
       case x: IdentityRef        => Seq()
-      case x: Constant           => Seq()
+      case x: Constant           => Seq(astForConstantExpr(x, order))
       case x: StaticFieldRef     => Seq()
       case x: CaughtExceptionRef => Seq()
       case x: InstanceFieldRef   => Seq()
@@ -302,7 +324,7 @@ class AstCreator(filename: String, global: Global) {
 
   /** Creates the AST for assignment statements keeping in mind Jimple is a 3-address code language.
     */
-  private def astForAssignment(assignStmt: AssignStmt, order: Int): Seq[Ast] = {
+  private def astsForAssignment(assignStmt: AssignStmt, order: Int): Seq[Ast] = {
     val leftOp       = assignStmt.getLeftOp.asInstanceOf[Local]
     val initializer  = assignStmt.getRightOp
     val name         = leftOp.getName
@@ -319,19 +341,78 @@ class AstCreator(filename: String, global: Global) {
       .typeFullName(typeFullName)
     val assignment = NewCall()
       .name(Operators.assignment)
-      .code(s"$name = ${initializer.toString}")
+      .code(s"$name = ${initializer.toString()}")
       .order(order)
       .argumentIndex(order)
       .typeFullName(assignStmt.getLeftOp.getType.toQuotedString)
       .build
 
-    val initAsts       = astForValue(initializer, 2, assignStmt)
+    val initAsts       = astsForValue(initializer, 2, assignStmt)
     val initializerAst = Seq(callAst(assignment, Seq(Ast(identifier)) ++ initAsts))
     Seq(
       Ast(
         NewLocal().name(name).code(code).typeFullName(typeFullName).order(order)
       )
     ) ++ initializerAst.toList
+  }
+
+  def astsForReturnNode(x: ReturnStmt, order: Int): Seq[Ast] = {
+    Seq(
+      Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x)))
+        .withChildren(astsForValue(x.getOp, order + 1, x))
+    )
+  }
+
+  def astsForReturnVoidNode(x: ReturnVoidStmt, order: Int): Seq[Ast] = {
+    Seq(Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x))))
+  }
+
+  def astForConstantExpr(constant: Constant, order: Int): Ast = {
+    constant match {
+      case _: ClassConstant => Ast()
+      case _: NullConstant  => Ast()
+      case _: IntConstant =>
+        registerType("int")
+        Ast(
+          NewLiteral().order(order).argumentIndex(order).code(constant.toString).typeFullName("int")
+        )
+      case _: LongConstant =>
+        registerType("long")
+        Ast(
+          NewLiteral()
+            .order(order)
+            .argumentIndex(order)
+            .code(constant.toString)
+            .typeFullName("long")
+        )
+      case _: DoubleConstant =>
+        registerType("double")
+        Ast(
+          NewLiteral()
+            .order(order)
+            .argumentIndex(order)
+            .code(constant.toString)
+            .typeFullName("double")
+        )
+      case _: FloatConstant =>
+        registerType("float")
+        Ast(
+          NewLiteral()
+            .order(order)
+            .argumentIndex(order)
+            .code(constant.toString)
+            .typeFullName("float")
+        )
+      case _: StringConstant =>
+        registerType("java.lang.String")
+        Ast(
+          NewLiteral()
+            .order(order)
+            .argumentIndex(order)
+            .code(constant.toString)
+            .typeFullName("java.lang.String")
+        )
+    }
   }
 
   def callAst(rootNode: NewNode, args: Seq[Ast]): Ast = {
@@ -359,7 +440,7 @@ class AstCreator(filename: String, global: Global) {
     val fullName = methodFullName(typeDecl, methodDeclaration)
     val code =
       s"${methodDeclaration.getReturnType.toQuotedString} ${methodDeclaration.getName}${paramListSignature(methodDeclaration, withParams = true)}"
-    val methodNode = NewMethod()
+    NewMethod()
       .name(methodDeclaration.getName)
       .fullName(fullName)
       .code(code)
@@ -371,7 +452,6 @@ class AstCreator(filename: String, global: Global) {
       .filename(filename)
       .lineNumber(line(methodDeclaration))
       .columnNumber(column(methodDeclaration))
-    methodNode
   }
 
   private def methodFullName(

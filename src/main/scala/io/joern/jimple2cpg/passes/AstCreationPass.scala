@@ -23,7 +23,6 @@ class AstCreationPass(codeDir: String, filenames: List[String], cpg: Cpg, keyPoo
   override def runOnPart(filename: String): Iterator[DiffGraph] = {
     val qualifiedClassName = getQualifiedClassPath(filename)
     try {
-
       new AstCreator(filename, global)
         .createAst(Scene.v().loadClassAndSupport(qualifiedClassName))
     } catch {
