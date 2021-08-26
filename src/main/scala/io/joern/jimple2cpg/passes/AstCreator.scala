@@ -4,10 +4,13 @@ import io.shiftleft.codepropertygraph.generated.{EdgeTypes, Operators}
 import io.shiftleft.codepropertygraph.generated.nodes.{
   NewBlock,
   NewCall,
+  NewIdentifier,
+  NewLocal,
   NewMethod,
   NewMethodParameterIn,
   NewMethodReturn,
   NewNamespaceBlock,
+  NewNode,
   NewTypeDecl
 }
 import io.shiftleft.passes.DiffGraph
@@ -190,7 +193,7 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
     statement match {
-      case x: AssignStmt       => Seq(astForAssign(x, order))
+      case x: AssignStmt       => astForAssignment(x, order)
       case x: IfStmt           => Seq()
       case x: GotoStmt         => Seq()
       case x: IdentityStmt     => Seq()
@@ -207,35 +210,62 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  private def astForValue(value: soot.Value, order: Int): Ast = {
+  private def astForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
-      case x: BinopExpr          => Ast()
-      case x: Local              => Ast()
-      case x: IdentityRef        => Ast()
-      case x: Constant           => Ast()
-      case x: InvokeExpr         => Ast()
-      case x: StaticFieldRef     => Ast()
-      case x: NewExpr            => Ast()
-      case x: NewArrayExpr       => Ast()
-      case x: CaughtExceptionRef => Ast()
-      case x: InstanceFieldRef   => Ast()
+      case x: BinopExpr          => Seq()
+      case x: Local              => Seq()
+      case x: IdentityRef        => Seq()
+      case x: Constant           => Seq()
+      case x: InvokeExpr         => Seq()
+      case x: StaticFieldRef     => Seq()
+      case x: NewExpr            => Seq()
+      case x: NewArrayExpr       => Seq()
+      case x: CaughtExceptionRef => Seq()
+      case x: InstanceFieldRef   => Seq()
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
-        Ast()
+        Seq()
     }
   }
 
-  def astForAssign(assignStmt: AssignStmt, order: Int): Ast = {
-    Ast(
-      NewCall()
-        .name(Operators.assignment)
-        .lineNumber(line(assignStmt))
-        .columnNumber(column(assignStmt))
-        .methodFullName(Operators.assignment)
-        .order(order)
-    )
-      .withChild(astForValue(assignStmt.getLeftOp, 1))
-      .withChild(astForValue(assignStmt.getRightOp, 2))
+  /** Creates the AST for assignment statements keeping in mind Jimple is a 3-address code language.
+    */
+  private def astForAssignment(assignStmt: AssignStmt, order: Int): Seq[Ast] = {
+    val leftOp       = assignStmt.getLeftOp.asInstanceOf[Local]
+    val initializer  = assignStmt.getRightOp
+    val name         = leftOp.getName
+    val code         = leftOp.getType.toQuotedString + " " + leftOp.getName
+    val typeFullName = registerType(leftOp.getType.toQuotedString)
+
+    val identifier = NewIdentifier()
+      .name(name)
+      .lineNumber(line(assignStmt))
+      .columnNumber(column(assignStmt))
+      .order(1)
+      .argumentIndex(1)
+      .code(name)
+      .typeFullName(typeFullName)
+    val assignment = NewCall()
+      .name(Operators.assignment)
+      .code(s"$name = ${initializer.toString}")
+      .order(order)
+      .argumentIndex(order)
+      .typeFullName(assignStmt.getLeftOp.getType.toQuotedString)
+      .build
+
+    val initAsts       = astForValue(initializer, 2, assignStmt)
+    val initializerAst = Seq(callAst(assignment, Seq(Ast(identifier)) ++ initAsts))
+    Seq(
+      Ast(
+        NewLocal().name(name).code(code).typeFullName(typeFullName).order(order)
+      )
+    ) ++ initializerAst.toList
+  }
+
+  def callAst(rootNode: NewNode, args: Seq[Ast]): Ast = {
+    Ast(rootNode)
+      .withChildren(args)
+      .withArgEdges(rootNode, args.flatMap(_.root))
   }
 
   private def astForMethodReturn(methodDeclaration: SootMethod): Ast = {
