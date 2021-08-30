@@ -7,7 +7,6 @@ import org.scalatest.Ignore
 
 import java.io.{File => JFile}
 
-@Ignore
 class FileTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
@@ -16,16 +15,18 @@ class FileTests extends JimpleCodeToCpgFixture {
       | class Foo { int bar() { return 1; } }
       |""".stripMargin
 
-  "should contain two file nodes in total with correct order" in {
-    cpg.file.order.l shouldBe List(0, 0)
+  "should contain three file nodes in total with correct order" in {
+    cpg.file.order.l shouldBe List(0, 0, 0)
     cpg.file.name(FileTraversal.UNKNOWN).size shouldBe 1
-    cpg.file.nameNot(FileTraversal.UNKNOWN).size shouldBe 1
+    cpg.file.nameNot(FileTraversal.UNKNOWN).size shouldBe 2
   }
 
-  "should contain exactly one non-placeholder file with absolute path in `name`" in {
-    val List(u) = cpg.file.nameNot(FileTraversal.UNKNOWN).l
+  "should contain exactly two non-placeholder file with absolute path in `name`" in {
+    val List(u, v) = cpg.file.nameNot(FileTraversal.UNKNOWN).l
     u.name should startWith(JFile.separator)
     u.hash.isDefined shouldBe false
+    v.name should startWith(JFile.separator)
+    v.hash.isDefined shouldBe false
   }
 
   "should allow traversing from file to its namespace blocks" in {
@@ -36,10 +37,10 @@ class FileTests extends JimpleCodeToCpgFixture {
 
   "should allow traversing from file to its methods via namespace block" in {
     cpg.file
-      .name(".*.java".replace("/", s"\\${JFile.separator}"))
+      .name(".*.class".replace("/", s"\\${JFile.separator}"))
       .method
       .name
-      .toSet shouldBe Set("bar")
+      .toSet shouldBe Set("bar", "<init>")
   }
 
   "should allow traversing from file to its type declarations via namespace block" in {
