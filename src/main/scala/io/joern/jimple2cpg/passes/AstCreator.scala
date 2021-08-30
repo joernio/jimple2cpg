@@ -213,7 +213,7 @@ class AstCreator(filename: String, global: Global) {
     try {
       val methodBody = methodDeclaration.retrieveActiveBody()
       val parameterAsts = withOrder(methodBody.getParameterLocals) { (p, order) =>
-        astForParameter(p, order)
+        astForParameter(p, order, methodDeclaration)
       }
       Ast(methodNode)
         .withChildren(parameterAsts)
@@ -227,15 +227,19 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  private def astForParameter(parameter: Local, childNum: Int): Ast = {
+  private def astForParameter(
+      parameter: Local,
+      childNum: Int,
+      methodDeclaration: SootMethod
+  ): Ast = {
     val typeFullName = registerType(parameter.getType.toQuotedString)
     val parameterNode = NewMethodParameterIn()
       .name(parameter.getName)
-      .code(parameter.toString)
+      .code(s"${parameter.getType.toQuotedString} ${parameter.getName}")
       .typeFullName(typeFullName)
       .order(childNum)
-      .lineNumber(-1)
-      .columnNumber(-1)
+      .lineNumber(line(methodDeclaration))
+      .columnNumber(column(methodDeclaration))
     Ast(parameterNode)
   }
 
@@ -350,8 +354,8 @@ class AstCreator(filename: String, global: Global) {
 
   private def astForInvokeExpr(invokeExpr: InvokeExpr, order: Int, parentUnit: soot.Unit): Ast = {
     val dispatchType = invokeExpr match {
-      case _: StaticInvokeExpr => DispatchTypes.STATIC_DISPATCH
-      case _                   => DispatchTypes.DYNAMIC_DISPATCH
+      case _: DynamicInvokeExpr => DispatchTypes.DYNAMIC_DISPATCH
+      case _                    => DispatchTypes.STATIC_DISPATCH
     }
     val method = invokeExpr.getMethod
     val signature =
@@ -367,6 +371,7 @@ class AstCreator(filename: String, global: Global) {
       .argumentIndex(order)
       .methodFullName(s"${method.getDeclaringClass.toString}.${method.getName}:$signature")
       .signature(signature)
+      .typeFullName(method.getDeclaringClass.getType.toQuotedString)
       .lineNumber(line(parentUnit))
       .columnNumber(column(parentUnit))
 
@@ -559,10 +564,15 @@ class AstCreator(filename: String, global: Global) {
 
   private def paramListSignature(methodDeclaration: SootMethod, withParams: Boolean = false) = {
     val paramTypes = methodDeclaration.getParameterTypes.asScala.map(_.toQuotedString)
+    val paramNames =
+      if (!methodDeclaration.isPhantom)
+        methodDeclaration.retrieveActiveBody().getParameterLocals.asScala.map(_.getName)
+      else
+        paramTypes.zipWithIndex.map(x => { s"${x._1} param${x._2 + 1}" })
     if (!withParams) {
       "(" + paramTypes.mkString(",") + ")"
     } else {
-      "(" + paramTypes.zipWithIndex.map(x => { s"${x._1} param${x._2 + 1}" }).mkString(", ") + ")"
+      "(" + paramTypes.zip(paramNames).map(x => s"${x._1} ${x._2}").mkString(", ") + ")"
     }
   }
 }

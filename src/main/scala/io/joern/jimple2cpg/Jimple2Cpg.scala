@@ -61,12 +61,11 @@ class Jimple2Cpg {
     new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
       .createAndApply()
     new TypeDeclStubCreator(cpg).createAndApply()
+    new MethodStubCreator(cpg).createAndApply()
+    new MethodDecoratorPass(cpg).createAndApply()
 
     new ContainsEdgePass(cpg).createAndApply()
     new Linker(cpg).createAndApply()
-
-    new MethodStubCreator(cpg).createAndApply()
-    new MethodDecoratorPass(cpg).createAndApply()
     new StaticCallLinker(cpg).createAndApply()
 
     new CfgDominatorPass(cpg).createAndApply()

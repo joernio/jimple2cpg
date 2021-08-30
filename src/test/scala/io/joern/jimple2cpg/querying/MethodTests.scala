@@ -26,7 +26,7 @@ class MethodTests extends JimpleCodeToCpgFixture {
     x.order shouldBe 1
     x.filename.startsWith(File.separator) shouldBe true
     x.filename.endsWith(".class") shouldBe true
-    x.lineNumber shouldBe Some(-1)
+    x.lineNumber shouldBe Some(2)
     x.columnNumber shouldBe Some(-1)
   }
 
