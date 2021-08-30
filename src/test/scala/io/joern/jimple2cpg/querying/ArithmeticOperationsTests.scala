@@ -41,6 +41,7 @@ class ArithmeticOperationsTests extends JimpleCodeToCpgFixture {
   "should contain call nodes with <operation>.assignment for all variables" in {
     val assignments = cpg.assignment
       .filterNot(_.target.code.startsWith("$"))
+      .filterNot(x => List("argc", "argv", "this").contains(x.target.code))
       .map(x => (x.target.code, x.typeFullName))
       .l
     assignments.size shouldBe 8 // includes casting and 3-address code manipulations

@@ -2,9 +2,7 @@ package io.joern.jimple2cpg.querying
 
 import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language._
-import org.scalatest.Ignore
 
-@Ignore
 class MethodParameterTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
@@ -17,20 +15,20 @@ class MethodParameterTests extends JimpleCodeToCpgFixture {
       """.stripMargin
 
   "should return exactly two parameters with correct fields" in {
-    cpg.parameter.name.toSet shouldBe Set("param1", "param2")
+    cpg.parameter.filter(_.method.name == "foo").name.toSet shouldBe Set("param1", "param2")
 
     val List(x) = cpg.parameter.filter(_.method.name == "foo").name("param1").l
     x.code shouldBe "int param1"
     x.typeFullName shouldBe "int"
     x.lineNumber shouldBe Some(3)
-    x.columnNumber shouldBe Some(10)
+    x.columnNumber shouldBe Some(-1)
     x.order shouldBe 1
 
     val List(y) = cpg.parameter.filter(_.method.name == "foo").name("param2").l
     y.code shouldBe "int param2"
     y.typeFullName shouldBe "int"
     y.lineNumber shouldBe Some(3)
-    y.columnNumber shouldBe Some(22)
+    y.columnNumber shouldBe Some(-1)
     y.order shouldBe 2
   }
 
