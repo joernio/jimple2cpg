@@ -5,6 +5,7 @@ import io.shiftleft.codepropertygraph.generated.nodes.{
   NewBlock,
   NewCall,
   NewIdentifier,
+  NewIdentifierBuilder,
   NewLiteral,
   NewLocal,
   NewMember,
@@ -30,8 +31,10 @@ import soot.jimple.{
   CmpgExpr,
   CmplExpr,
   Constant,
+  DefinitionStmt,
   DivExpr,
   DoubleConstant,
+  DynamicInvokeExpr,
   EqExpr,
   Expr,
   FloatConstant,
@@ -42,6 +45,7 @@ import soot.jimple.{
   IdentityStmt,
   IfStmt,
   InstanceFieldRef,
+  InstanceInvokeExpr,
   IntConstant,
   InvokeExpr,
   InvokeStmt,
@@ -55,17 +59,21 @@ import soot.jimple.{
   NewExpr,
   NullConstant,
   OrExpr,
+  ParameterRef,
   RemExpr,
   ReturnStmt,
   ReturnVoidStmt,
   ShlExpr,
   ShrExpr,
   StaticFieldRef,
+  StaticInvokeExpr,
   StringConstant,
   SubExpr,
   TableSwitchStmt,
+  ThisRef,
   ThrowStmt,
   UshrExpr,
+  VirtualInvokeExpr,
   XorExpr
 }
 import soot.tagkit.Host
@@ -73,6 +81,7 @@ import soot.{Body, Local, RefType, SootClass, SootField, SootMethod}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
+import scala.util.Try
 
 class AstCreator(filename: String, global: Global) {
 
@@ -241,13 +250,13 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
     statement match {
-      case x: AssignStmt => astsForAssignment(x, order)
+      case x: AssignStmt => astsForDefinition(x, order)
 //      case x: IfStmt           => Seq()
 //      case x: GotoStmt         => Seq()
-//      case x: IdentityStmt     => Seq()
+      case x: IdentityStmt => astsForDefinition(x, order)
 //      case x: LookupSwitchStmt => Seq()
 //      case x: TableSwitchStmt  => Seq()
-//      case x: InvokeStmt       => Seq()
+      case x: InvokeStmt     => astsForExpression(x.getInvokeExpr, order, statement)
       case x: ReturnStmt     => astsForReturnNode(x, order)
       case x: ReturnVoidStmt => astsForReturnVoidNode(x, order)
 //      case x: ThrowStmt        => Seq()
@@ -297,12 +306,12 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForExpression(expr: Expr, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     expr match {
-      case x: BinopExpr => Seq(astForBinOpExpr(x, order, parentUnit))
-//      case x: InvokeExpr   => Seq()
+      case x: BinopExpr  => Seq(astForBinOpExpr(x, order, parentUnit))
+      case x: InvokeExpr => Seq(astForInvokeExpr(x, order, parentUnit))
 //      case x: NewExpr      => Seq()
 //      case x: NewArrayExpr => Seq()
       case x =>
-        logger.warn(s"Unhandled soot.Value type ${x.getClass}")
+        logger.warn(s"Unhandled soot.Expr type ${x.getClass}")
         Seq()
     }
   }
@@ -316,6 +325,8 @@ class AstCreator(filename: String, global: Global) {
 //      case x: StaticFieldRef     => Seq()
 //      case x: CaughtExceptionRef => Seq()
 //      case x: InstanceFieldRef   => Seq()
+      case x: ThisRef      => Seq(createThisNode(x))
+      case x: ParameterRef => Seq(createParameterNode(x, order))
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()
@@ -337,9 +348,83 @@ class AstCreator(filename: String, global: Global) {
     )
   }
 
+  private def astForInvokeExpr(invokeExpr: InvokeExpr, order: Int, parentUnit: soot.Unit): Ast = {
+    val dispatchType = invokeExpr match {
+      case _: StaticInvokeExpr => DispatchTypes.STATIC_DISPATCH
+      case _                   => DispatchTypes.DYNAMIC_DISPATCH
+    }
+    val method = invokeExpr.getMethod
+    val signature =
+      s"${method.getReturnType.toQuotedString}(${(for (i <- 0 until method.getParameterCount)
+        yield method.getParameterType(i).toQuotedString).mkString(",")})"
+    val thisAsts = Seq(createThisNode(invokeExpr.getMethod))
+
+    val callNode = NewCall()
+      .name(method.getName)
+      .code(s"${method.getName}(${invokeExpr.getArgs.asScala.mkString(", ")})")
+      .dispatchType(dispatchType)
+      .order(order)
+      .argumentIndex(order)
+      .methodFullName(s"${method.getDeclaringClass.toString}.${method.getName}:$signature")
+      .signature(signature)
+      .lineNumber(line(parentUnit))
+      .columnNumber(column(parentUnit))
+
+    val argAsts = withOrder(invokeExpr match {
+      case x: DynamicInvokeExpr => x.getArgs.asScala ++ x.getBootstrapArgs.asScala
+      case x                    => x.getArgs.asScala
+    }) { case (arg, order) =>
+      astsForValue(arg, order, parentUnit)
+    }.flatten
+
+    Ast(callNode)
+      .withChildren(thisAsts)
+      .withChildren(argAsts)
+      .withArgEdges(callNode, thisAsts.flatMap(_.root))
+      .withArgEdges(callNode, argAsts.flatMap(_.root))
+  }
+
+  private def createThisNode(method: ThisRef): Ast = {
+    Ast(
+      NewIdentifier()
+        .name("this")
+        .code("this")
+        .typeFullName(method.getType.toQuotedString)
+        .order(0)
+        .argumentIndex(0)
+    )
+  }
+
+  private def createThisNode(method: SootMethod): Ast = {
+    if (!method.isStatic) {
+      Ast(
+        NewIdentifier()
+          .name("this")
+          .code("this")
+          .typeFullName(method.getDeclaringClass.getType.toQuotedString)
+          .order(0)
+          .argumentIndex(0)
+      )
+    } else {
+      Ast()
+    }
+  }
+
+  private def createParameterNode(parameterRef: ParameterRef, order: Int): Ast = {
+    val name = s"@parameter${parameterRef.getIndex}"
+    Ast(
+      NewIdentifier()
+        .name(name)
+        .code(name)
+        .typeFullName(parameterRef.getType.toQuotedString)
+        .order(order)
+        .argumentIndex(order)
+    )
+  }
+
   /** Creates the AST for assignment statements keeping in mind Jimple is a 3-address code language.
     */
-  private def astsForAssignment(assignStmt: AssignStmt, order: Int): Seq[Ast] = {
+  private def astsForDefinition(assignStmt: DefinitionStmt, order: Int): Seq[Ast] = {
     val leftOp       = assignStmt.getLeftOp.asInstanceOf[Local]
     val initializer  = assignStmt.getRightOp
     val name         = leftOp.getName
