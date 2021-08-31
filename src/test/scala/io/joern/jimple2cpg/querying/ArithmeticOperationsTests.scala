@@ -3,9 +3,7 @@ package io.joern.jimple2cpg.querying
 import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.codepropertygraph.generated.Operators
 import io.shiftleft.codepropertygraph.generated.nodes.Identifier
-import io.shiftleft.semanticcpg.language.{ICallResolver, NoResolve, toNodeTypeStarters}
-import io.shiftleft.semanticcpg.language._
-import org.scalatest.Ignore
+import io.shiftleft.semanticcpg.language.{ICallResolver, NoResolve, toNodeTypeStarters, _}
 
 class ArithmeticOperationsTests extends JimpleCodeToCpgFixture {
 
