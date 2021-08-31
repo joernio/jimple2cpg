@@ -16,10 +16,17 @@ import io.shiftleft.semanticcpg.passes.namespacecreator.NamespaceCreator
 import io.shiftleft.semanticcpg.passes.typenodes.{TypeDeclStubCreator, TypeNodePass}
 import io.shiftleft.x2cpg.SourceFiles
 import io.shiftleft.x2cpg.X2Cpg.newEmptyCpg
+import org.slf4j.LoggerFactory
 import soot.{G, PhaseOptions, Scene}
 import soot.options.Options
 
+import java.io.{FileOutputStream, File => JFile}
+import java.nio.file.Files
+import java.util.zip.ZipFile
+import scala.collection.immutable.{AbstractSeq, LinearSeq}
 import scala.jdk.CollectionConverters.EnumerationHasAsScala
+import scala.language.postfixOps
+import scala.util.Using
 
 object Jimple2Cpg {
   val language = "JIMPLEPARSER"
@@ -29,10 +36,12 @@ class Jimple2Cpg {
 
   import Jimple2Cpg._
 
+  private val logger = LoggerFactory.getLogger(classOf[Jimple2Cpg])
+
   /** Creates a CPG from Jimple.
     *
     * @param sourceCodePath The path to the Jimple code or code that can be transformed into Jimple.
-    * @param outputPath The path to store the CPG. If `outputPath` is `None`, the CPG is created in-memory.
+    * @param outputPath     The path to store the CPG. If `outputPath` is `None`, the CPG is created in-memory.
     * @return The constructed CPG.
     */
   def createCpg(
@@ -49,8 +58,13 @@ class Jimple2Cpg {
     new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
 
     val sourceFileExtensions = Set(".class", ".jimple")
-    val sourceFileNames      = SourceFiles.determine(Set(sourceCodePath), sourceFileExtensions)
-    val astCreator           = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
+    val zipFileExtensions    = Set(".jar", ".war")
+    // Unpack any archives on the path onto the source code path as project root
+    val archives = SourceFiles.determine(Set(sourceCodePath), zipFileExtensions)
+    archives.map(new ZipFile(_)).foreach(unzipArchive(_, sourceCodePath))
+
+    val sourceFileNames = SourceFiles.determine(Set(sourceCodePath), sourceFileExtensions)
+    val astCreator      = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
     astCreator.createAndApply()
 
     new CfgCreationPass(cpg).createAndApply()
@@ -97,6 +111,51 @@ class Jimple2Cpg {
 
   private def closeSoot(): Unit = {
     G.reset()
+  }
+
+  /** Unzips a ZIP file into a sequence of files. All files unpacked are deleted at the end of CPG construction.
+    *
+    * @param zf The ZIP file to extract.
+    * @param sourceCodePath The project root path to unpack to.
+    */
+  private def unzipArchive(zf: ZipFile, sourceCodePath: String) = scala.util.Try {
+    Using.resource(zf) { zip: ZipFile =>
+      // Copy zipped files across
+      zip
+        .entries()
+        .asScala
+        .filter(!_.isDirectory)
+        .flatMap(entry => {
+          val destFile = new JFile(sourceCodePath + JFile.separator + entry.getName)
+          val dirName = destFile.getAbsolutePath
+            .substring(0, destFile.getAbsolutePath.lastIndexOf(JFile.separator))
+          // Create directory path
+          new JFile(dirName).mkdirs()
+          try {
+            destFile.createNewFile()
+            Using.resource(zip.getInputStream(entry)) { input =>
+              Files.copy(input, destFile.toPath)
+            }
+            destFile.deleteOnExit()
+            Option(destFile)
+          } catch {
+            case zf: Exception =>
+              logger.warn(
+                s"Encountered an error while extracting entry ${entry.getName} from archive ${zip.getName}.",
+                zf
+              )
+              Option.empty
+          }
+        })
+        .toSeq
+    }
+  }
+
+  private def inputToFile(is: java.io.InputStream, f: java.io.File) {
+    val in  = scala.io.Source.fromInputStream(is)
+    val out = new java.io.PrintWriter(f)
+    try { in.getLines().foreach(out.println) }
+    finally { out.close() }
   }
 
 }
