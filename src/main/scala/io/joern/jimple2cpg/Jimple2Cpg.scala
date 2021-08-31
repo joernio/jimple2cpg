@@ -5,7 +5,6 @@ import io.shiftleft.codepropertygraph.Cpg
 import io.shiftleft.passes.IntervalKeyPool
 import io.shiftleft.semanticcpg.passes.cfgdominator.CfgDominatorPass
 import io.shiftleft.semanticcpg.passes.codepencegraph.CdgPass
-import io.shiftleft.semanticcpg.passes.{CfgCreationPass, FileCreationPass}
 import io.shiftleft.semanticcpg.passes.containsedges.ContainsEdgePass
 import io.shiftleft.semanticcpg.passes.languagespecific.fuzzyc.MethodStubCreator
 import io.shiftleft.semanticcpg.passes.linking.calllinker.StaticCallLinker
@@ -14,16 +13,16 @@ import io.shiftleft.semanticcpg.passes.metadata.MetaDataPass
 import io.shiftleft.semanticcpg.passes.methoddecorations.MethodDecoratorPass
 import io.shiftleft.semanticcpg.passes.namespacecreator.NamespaceCreator
 import io.shiftleft.semanticcpg.passes.typenodes.{TypeDeclStubCreator, TypeNodePass}
+import io.shiftleft.semanticcpg.passes.{CfgCreationPass, FileCreationPass}
 import io.shiftleft.x2cpg.SourceFiles
 import io.shiftleft.x2cpg.X2Cpg.newEmptyCpg
 import org.slf4j.LoggerFactory
-import soot.{G, PhaseOptions, Scene}
 import soot.options.Options
+import soot.{G, PhaseOptions, Scene}
 
-import java.io.{FileOutputStream, File => JFile}
+import java.io.{File => JFile}
 import java.nio.file.Files
 import java.util.zip.ZipFile
-import scala.collection.immutable.{AbstractSeq, LinearSeq}
 import scala.jdk.CollectionConverters.EnumerationHasAsScala
 import scala.language.postfixOps
 import scala.util.Using
@@ -125,6 +124,7 @@ class Jimple2Cpg {
         .entries()
         .asScala
         .filter(!_.isDirectory)
+        .filter(_.getName.contains(".class"))
         .flatMap(entry => {
           val destFile = new JFile(sourceCodePath + JFile.separator + entry.getName)
           val dirName = destFile.getAbsolutePath
@@ -132,30 +132,23 @@ class Jimple2Cpg {
           // Create directory path
           new JFile(dirName).mkdirs()
           try {
-            destFile.createNewFile()
+            if (destFile.exists()) destFile.delete()
             Using.resource(zip.getInputStream(entry)) { input =>
               Files.copy(input, destFile.toPath)
             }
             destFile.deleteOnExit()
             Option(destFile)
           } catch {
-            case zf: Exception =>
+            case e: Exception =>
               logger.warn(
                 s"Encountered an error while extracting entry ${entry.getName} from archive ${zip.getName}.",
-                zf
+                e
               )
               Option.empty
           }
         })
         .toSeq
     }
-  }
-
-  private def inputToFile(is: java.io.InputStream, f: java.io.File) {
-    val in  = scala.io.Source.fromInputStream(is)
-    val out = new java.io.PrintWriter(f)
-    try { in.getLines().foreach(out.println) }
-    finally { out.close() }
   }
 
 }

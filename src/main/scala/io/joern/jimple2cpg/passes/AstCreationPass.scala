@@ -27,7 +27,6 @@ class AstCreationPass(codeDir: String, filenames: List[String], cpg: Cpg, keyPoo
         .createAst(Scene.v().loadClassAndSupport(qualifiedClassName))
     } catch {
       case e: Exception =>
-        e.printStackTrace()
         logger.warn("Cannot parse: " + filename, e)
         Iterator()
     }
