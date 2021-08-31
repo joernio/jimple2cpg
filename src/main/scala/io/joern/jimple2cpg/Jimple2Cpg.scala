@@ -57,11 +57,11 @@ class Jimple2Cpg {
     new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
 
     val sourceFileExtensions = Set(".class", ".jimple")
-    val zipFileExtensions    = Set(".jar", ".war")
+    val archiveFileExtensions    = Set(".jar", ".war")
     // Unpack any archives on the path onto the source code path as project root
-    val archives = SourceFiles.determine(Set(sourceCodePath), zipFileExtensions)
+    val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
     archives.map(new ZipFile(_)).foreach(unzipArchive(_, sourceCodePath))
-
+    // Load source files
     val sourceFileNames = SourceFiles.determine(Set(sourceCodePath), sourceFileExtensions)
     val astCreator      = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
     astCreator.createAndApply()
