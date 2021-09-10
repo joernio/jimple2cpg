@@ -40,7 +40,7 @@ class AstCreator(filename: String, global: Global) {
 
   /** Copy nodes/edges of given `AST` into the diff graph
     */
-  private def storeInDiffGraph(ast: Ast): Unit = {
+  private def storeInDiffGraph(ast: Ast): scala.Unit = {
     ast.nodes.foreach { node =>
       diffGraph.addNode(node)
     }
@@ -158,7 +158,7 @@ class AstCreator(filename: String, global: Global) {
   }
 
   private def astForParameter(
-      parameter: Local,
+      parameter: soot.Local,
       childNum: Int,
       methodDeclaration: SootMethod
   ): Ast = {
@@ -258,7 +258,7 @@ class AstCreator(filename: String, global: Global) {
   private def astsForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
       case x: Expr               => astsForExpression(x, order, parentUnit)
-      case x: Local              => Seq(astForLocal(x, order, parentUnit))
+      case x: soot.Local         => Seq(astForLocal(x, order, parentUnit))
       case x: CaughtExceptionRef => Seq(astForCaughtExceptionRef(x, order, parentUnit))
       case x: Constant           => Seq(astForConstantExpr(x, order))
       case x: FieldRef           => Seq(astForFieldRef(x, order, parentUnit))
@@ -271,7 +271,7 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  private def astForLocal(local: Local, order: Int, parentUnit: soot.Unit): Ast = {
+  private def astForLocal(local: soot.Local, order: Int, parentUnit: soot.Unit): Ast = {
     val name         = local.getName
     val typeFullName = registerType(local.getType.toQuotedString)
     Ast(
@@ -412,7 +412,7 @@ class AstCreator(filename: String, global: Global) {
   /** Creates the AST for assignment statements keeping in mind Jimple is a 3-address code language.
     */
   private def astsForDefinition(assignStmt: DefinitionStmt, order: Int): Seq[Ast] = {
-    val leftOp       = assignStmt.getLeftOp.asInstanceOf[Local]
+    val leftOp       = assignStmt.getLeftOp.asInstanceOf[soot.Local]
     val initializer  = assignStmt.getRightOp
     val name         = leftOp.getName
     val code         = leftOp.getType.toQuotedString + " " + leftOp.getName

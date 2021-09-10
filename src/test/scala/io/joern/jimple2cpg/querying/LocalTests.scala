@@ -9,6 +9,7 @@ class LocalTests extends JimpleCodeToCpgFixture {
 
   override val code: String =
     """
+      | @SuppressWarnings("deprecation")
       | class Foo {
       |   Integer foo() {
       |     int x;
