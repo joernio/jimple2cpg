@@ -1,94 +1,16 @@
 package io.joern.jimple2cpg.passes
 
+import io.shiftleft.codepropertygraph.generated.nodes._
 import io.shiftleft.codepropertygraph.generated.{DispatchTypes, EdgeTypes, Operators}
-import io.shiftleft.codepropertygraph.generated.nodes.{
-  NewBlock,
-  NewCall,
-  NewFieldIdentifier,
-  NewIdentifier,
-  NewLiteral,
-  NewLocal,
-  NewMember,
-  NewMethod,
-  NewMethodParameterIn,
-  NewMethodReturn,
-  NewNamespaceBlock,
-  NewNode,
-  NewReturn,
-  NewTypeDecl,
-  NewUnknown
-}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import org.slf4j.LoggerFactory
-import soot.jimple.{
-  AddExpr,
-  AndExpr,
-  AnyNewExpr,
-  AssignStmt,
-  BinopExpr,
-  CastExpr,
-  CaughtExceptionRef,
-  ClassConstant,
-  CmpExpr,
-  CmpgExpr,
-  CmplExpr,
-  Constant,
-  DefinitionStmt,
-  DivExpr,
-  DoubleConstant,
-  DynamicInvokeExpr,
-  EqExpr,
-  Expr,
-  FieldRef,
-  FloatConstant,
-  GeExpr,
-  GotoStmt,
-  GtExpr,
-  IdentityRef,
-  IdentityStmt,
-  IfStmt,
-  InstanceFieldRef,
-  InstanceInvokeExpr,
-  InstanceOfExpr,
-  IntConstant,
-  InvokeExpr,
-  InvokeStmt,
-  LeExpr,
-  LengthExpr,
-  LongConstant,
-  LookupSwitchStmt,
-  LtExpr,
-  MonitorStmt,
-  MulExpr,
-  NegExpr,
-  NewArrayExpr,
-  NewExpr,
-  NullConstant,
-  OrExpr,
-  ParameterRef,
-  RemExpr,
-  ReturnStmt,
-  ReturnVoidStmt,
-  ShlExpr,
-  ShrExpr,
-  StaticFieldRef,
-  StaticInvokeExpr,
-  StringConstant,
-  SubExpr,
-  TableSwitchStmt,
-  ThisRef,
-  ThrowStmt,
-  UshrExpr,
-  VirtualInvokeExpr,
-  XorExpr
-}
+import soot.jimple._
 import soot.tagkit.Host
-import soot.{Body, Local, RefType, SootClass, SootField, SootMethod, Value}
+import soot.{Local => _, _}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
-import scala.util.Try
 
 class AstCreator(filename: String, global: Global) {
 
@@ -164,7 +86,7 @@ class AstCreator(filename: String, global: Global) {
     val fullName = typ.toQuotedString
     val filename =
       if (fullName.contains('.'))
-        s"${File.separator}${fullName.replace(".", File.separator).replace("[]", "")}.class"
+        s"${File.separator}${this.filename}"
       else fullName
     val shortName =
       if (fullName.contains('.')) fullName.substring(fullName.lastIndexOf('.') + 1)
@@ -175,7 +97,8 @@ class AstCreator(filename: String, global: Global) {
       .fullName(registerType(fullName))
       .order(order)
       .filename(filename)
-      .code(fullName)
+      .code(shortName)
+//      .inheritsFromTypeFullName TODO: Handle this with soot.FashHeirarchy
       .astParentType("NAMESPACE_BLOCK")
       .astParentFullName(namespaceBlockFullName)
 
@@ -336,12 +259,12 @@ class AstCreator(filename: String, global: Global) {
     value match {
       case x: Expr               => astsForExpression(x, order, parentUnit)
       case x: Local              => Seq(astForLocal(x, order, parentUnit))
-      case x: IdentityRef        => Seq(astForIdentityRef(x, order, parentUnit))
+      case x: CaughtExceptionRef => Seq(astForCaughtExceptionRef(x, order, parentUnit))
       case x: Constant           => Seq(astForConstantExpr(x, order))
       case x: FieldRef           => Seq(astForFieldRef(x, order, parentUnit))
-      case x: CaughtExceptionRef => Seq(astForCaughtExceptionRef(x, order, parentUnit))
       case x: ThisRef            => Seq(createThisNode(x))
       case x: ParameterRef       => Seq(createParameterNode(x, order))
+      case x: IdentityRef        => Seq(astForIdentityRef(x, order, parentUnit))
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()

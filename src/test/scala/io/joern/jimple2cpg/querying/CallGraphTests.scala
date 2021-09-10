@@ -1,9 +1,7 @@
 package io.joern.jimple2cpg.querying
 
 import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
-import io.shiftleft.semanticcpg.language.NoResolve
-import io.shiftleft.semanticcpg.language._
-import org.scalatest.Ignore
+import io.shiftleft.semanticcpg.language.{NoResolve, _}
 
 class CallGraphTests extends JimpleCodeToCpgFixture {
 
@@ -27,10 +25,13 @@ class CallGraphTests extends JimpleCodeToCpgFixture {
 
   "should find that main calls add and others" in {
     // The addition here is solved already by the compiler
-    cpg.method.name("main").callee.name.toSet shouldBe Set("add", "println")
+    cpg.method.name("main").callee.name.filterNot(_.startsWith("<operator>")).toSet shouldBe Set(
+      "add",
+      "println"
+    )
   }
 
-  "should find three outgoing calls for main" in {
+  "should find a set of outgoing calls for main" in {
     cpg.method.name("main").call.code.toSet shouldBe
       Set(
         "add(3, 3)",
@@ -39,6 +40,7 @@ class CallGraphTests extends JimpleCodeToCpgFixture {
         "argc = @parameter0: int",
         "argv = @parameter1: char",
         "this = @this: Foo",
+        "java.lang.System.out",
         "$stack4 = virtualinvoke this.<Foo: int add(int,int)>(3, 3)"
       )
   }
