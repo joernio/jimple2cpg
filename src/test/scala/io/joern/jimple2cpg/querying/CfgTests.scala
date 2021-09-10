@@ -7,7 +7,7 @@ import org.scalatest.Ignore
 @Ignore
 class CfgTests extends JimpleCodeToCpgFixture {
 
-  override val code =
+  override val code: String =
     """
       |class Foo {
       | int foo(int x, int y) {

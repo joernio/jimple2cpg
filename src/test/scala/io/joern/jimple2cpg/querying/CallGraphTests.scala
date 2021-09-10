@@ -5,10 +5,9 @@ import io.shiftleft.semanticcpg.language.NoResolve
 import io.shiftleft.semanticcpg.language._
 import org.scalatest.Ignore
 
-@Ignore
 class CallGraphTests extends JimpleCodeToCpgFixture {
 
-  implicit val resolver = NoResolve
+  implicit val resolver: NoResolve.type = NoResolve
 
   override val code = """
        class Foo {
@@ -17,6 +16,7 @@ class CallGraphTests extends JimpleCodeToCpgFixture {
         }
         int main(int argc, char argv) {
          System.out.println(add(1+2, 3));
+         return 0;
         }
        }
     """
@@ -26,20 +26,29 @@ class CallGraphTests extends JimpleCodeToCpgFixture {
   }
 
   "should find that main calls add and others" in {
-    cpg.method.name("main").callee.name.toSet shouldBe Set("add", "println", "<operator>.addition")
+    // The addition here is solved already by the compiler
+    cpg.method.name("main").callee.name.toSet shouldBe Set("add", "println")
   }
 
   "should find three outgoing calls for main" in {
     cpg.method.name("main").call.code.toSet shouldBe
-      Set("1 + 2", "add(1 + 2, 3)", "println(add(1 + 2, 3))")
+      Set(
+        "add(3, 3)",
+        "println($stack4)",
+        "$stack3 = <java.lang.System: java.io.PrintStream out>",
+        "argc = @parameter0: int",
+        "argv = @parameter1: char",
+        "this = @this: Foo",
+        "$stack4 = virtualinvoke this.<Foo: int add(int,int)>(3, 3)"
+      )
   }
 
   "should find one callsite for add" in {
-    cpg.method.name("add").callIn.code.toSet shouldBe Set("add(1 + 2, 3)")
+    cpg.method.name("add").callIn.code.toSet shouldBe Set("add(3, 3)")
   }
 
   "should find that argument '1+2' is passed to parameter 'x'" in {
-    cpg.parameter.name("x").argument.code.toSet shouldBe Set("1 + 2")
+    cpg.parameter.name("x").argument.code.toSet shouldBe Set("3")
   }
 
   "should allow traversing from argument to formal parameter" in {

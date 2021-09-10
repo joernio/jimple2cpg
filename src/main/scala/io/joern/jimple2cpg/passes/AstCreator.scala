@@ -4,6 +4,7 @@ import io.shiftleft.codepropertygraph.generated.{DispatchTypes, EdgeTypes, Opera
 import io.shiftleft.codepropertygraph.generated.nodes.{
   NewBlock,
   NewCall,
+  NewFieldIdentifier,
   NewIdentifier,
   NewLiteral,
   NewLocal,
@@ -14,7 +15,8 @@ import io.shiftleft.codepropertygraph.generated.nodes.{
   NewNamespaceBlock,
   NewNode,
   NewReturn,
-  NewTypeDecl
+  NewTypeDecl,
+  NewUnknown
 }
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
@@ -22,6 +24,7 @@ import org.slf4j.LoggerFactory
 import soot.jimple.{
   AddExpr,
   AndExpr,
+  AnyNewExpr,
   AssignStmt,
   BinopExpr,
   ClassConstant,
@@ -35,6 +38,7 @@ import soot.jimple.{
   DynamicInvokeExpr,
   EqExpr,
   Expr,
+  FieldRef,
   FloatConstant,
   GeExpr,
   GotoStmt,
@@ -269,7 +273,7 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  def astForBinOpExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
+  private def astForBinOpExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
     val operatorName = binOp match {
       case _: AddExpr  => Operators.addition
       case _: SubExpr  => Operators.subtraction
@@ -310,8 +314,7 @@ class AstCreator(filename: String, global: Global) {
     expr match {
       case x: BinopExpr  => Seq(astForBinOpExpr(x, order, parentUnit))
       case x: InvokeExpr => Seq(astForInvokeExpr(x, order, parentUnit))
-//      case x: NewExpr      => Seq()
-//      case x: NewArrayExpr => Seq()
+      case x: AnyNewExpr => Seq(astForNewExpr(x, order, parentUnit))
       case x =>
         logger.warn(s"Unhandled soot.Expr type ${x.getClass}")
         Seq()
@@ -320,13 +323,12 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
-      case x: Expr  => astsForExpression(x, order, parentUnit)
-      case x: Local => Seq(astForLocal(x, order, parentUnit))
-//      case x: IdentityRef        => Seq()
-      case x: Constant => Seq(astForConstantExpr(x, order))
-//      case x: StaticFieldRef     => Seq()
+      case x: Expr        => astsForExpression(x, order, parentUnit)
+      case x: Local       => Seq(astForLocal(x, order, parentUnit))
+      case x: IdentityRef => Seq(astForIdentityRef(x, order, parentUnit))
+      case x: Constant    => Seq(astForConstantExpr(x, order))
+      case x: FieldRef    => Seq(astForFieldRef(x, order, parentUnit))
 //      case x: CaughtExceptionRef => Seq()
-//      case x: InstanceFieldRef   => Seq()
       case x: ThisRef      => Seq(createThisNode(x))
       case x: ParameterRef => Seq(createParameterNode(x, order))
       case x =>
@@ -347,6 +349,19 @@ class AstCreator(filename: String, global: Global) {
         .argumentIndex(order)
         .code(name)
         .typeFullName(typeFullName)
+    )
+  }
+
+  private def astForIdentityRef(x: IdentityRef, order: Int, parentUnit: soot.Unit): Ast = {
+    Ast(
+      NewIdentifier()
+        .code(x.toString())
+        .name(x.toString())
+        .order(order)
+        .argumentIndex(order)
+        .typeFullName(x.getType.toQuotedString)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
     )
   }
 
@@ -385,6 +400,18 @@ class AstCreator(filename: String, global: Global) {
       .withChildren(argAsts)
       .withArgEdges(callNode, thisAsts.flatMap(_.root))
       .withArgEdges(callNode, argAsts.flatMap(_.root))
+  }
+
+  private def astForNewExpr(x: AnyNewExpr, order: Int, parentUnit: soot.Unit): Ast = {
+    Ast(
+      NewUnknown()
+        .typeFullName(x.getType.toQuotedString)
+        .code("new")
+        .order(order)
+        .argumentIndex(order)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+    )
   }
 
   private def createThisNode(method: ThisRef): Ast = {
@@ -452,18 +479,64 @@ class AstCreator(filename: String, global: Global) {
     ) ++ initializerAst.toList
   }
 
-  def astsForReturnNode(x: ReturnStmt, order: Int): Seq[Ast] = {
+  private def astsForReturnNode(x: ReturnStmt, order: Int): Seq[Ast] = {
     Seq(
       Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x)))
         .withChildren(astsForValue(x.getOp, order + 1, x))
     )
   }
 
-  def astsForReturnVoidNode(x: ReturnVoidStmt, order: Int): Seq[Ast] = {
+  private def astsForReturnVoidNode(x: ReturnVoidStmt, order: Int): Seq[Ast] = {
     Seq(Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x))))
   }
 
-  def astForConstantExpr(constant: Constant, order: Int): Ast = {
+  private def astForFieldRef(fieldRef: FieldRef, order: Int, parentUnit: soot.Unit): Ast = {
+    val leftOpString = fieldRef match {
+      case x: StaticFieldRef   => x.getFieldRef.declaringClass().toString
+      case x: InstanceFieldRef => x.getBase.toString()
+      case _                   => fieldRef.getFieldRef.declaringClass().toString
+    }
+    val leftOpType = fieldRef match {
+      case x: StaticFieldRef   => x.getFieldRef.declaringClass().getType
+      case x: InstanceFieldRef => x.getBase.getType
+      case _                   => fieldRef.getFieldRef.declaringClass().getType
+    }
+    val fieldAccessBlock = NewCall()
+      .name(Operators.fieldAccess)
+      .code(s"${leftOpType.toQuotedString}.${fieldRef.getField.getName}")
+      .typeFullName(fieldRef.getType.toQuotedString)
+      .methodFullName(Operators.fieldAccess)
+      .dispatchType(DispatchTypes.STATIC_DISPATCH)
+      .order(order)
+      .argumentIndex(order)
+      .lineNumber(line(parentUnit))
+      .columnNumber(column(parentUnit))
+      .build
+
+    val argAsts = Seq(
+      NewIdentifier()
+        .order(1)
+        .argumentIndex(1)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .name(leftOpString)
+        .code(leftOpString)
+        .typeFullName(leftOpType.toQuotedString),
+      NewFieldIdentifier()
+        .order(2)
+        .argumentIndex(2)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .canonicalName(fieldRef.getField.getSignature)
+        .code(fieldRef.getField.getName)
+    ).map(Ast(_))
+
+    Ast(fieldAccessBlock)
+      .withChildren(argAsts)
+      .withArgEdges(fieldAccessBlock, argAsts.flatMap(_.root))
+  }
+
+  private def astForConstantExpr(constant: Constant, order: Int): Ast = {
     constant match {
       case _: ClassConstant => Ast()
       case _: NullConstant  => Ast()
@@ -511,7 +584,7 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  def callAst(rootNode: NewNode, args: Seq[Ast]): Ast = {
+  private def callAst(rootNode: NewNode, args: Seq[Ast]): Ast = {
     Ast(rootNode)
       .withChildren(args)
       .withArgEdges(rootNode, args.flatMap(_.root))
