@@ -27,6 +27,8 @@ import soot.jimple.{
   AnyNewExpr,
   AssignStmt,
   BinopExpr,
+  CastExpr,
+  CaughtExceptionRef,
   ClassConstant,
   CmpExpr,
   CmpgExpr,
@@ -48,15 +50,18 @@ import soot.jimple.{
   IfStmt,
   InstanceFieldRef,
   InstanceInvokeExpr,
+  InstanceOfExpr,
   IntConstant,
   InvokeExpr,
   InvokeStmt,
   LeExpr,
+  LengthExpr,
   LongConstant,
   LookupSwitchStmt,
   LtExpr,
   MonitorStmt,
   MulExpr,
+  NegExpr,
   NewArrayExpr,
   NewExpr,
   NullConstant,
@@ -79,7 +84,7 @@ import soot.jimple.{
   XorExpr
 }
 import soot.tagkit.Host
-import soot.{Body, Local, RefType, SootClass, SootField, SootMethod}
+import soot.{Body, Local, RefType, SootClass, SootField, SootMethod, Value}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
@@ -315,6 +320,12 @@ class AstCreator(filename: String, global: Global) {
       case x: BinopExpr  => Seq(astForBinOpExpr(x, order, parentUnit))
       case x: InvokeExpr => Seq(astForInvokeExpr(x, order, parentUnit))
       case x: AnyNewExpr => Seq(astForNewExpr(x, order, parentUnit))
+      case x: CastExpr   => Seq(astForUnaryExpr(Operators.cast, x, x.getOp, order, parentUnit))
+      case x: InstanceOfExpr =>
+        Seq(astForUnaryExpr(Operators.instanceOf, x, x.getOp, order, parentUnit))
+      case x: LengthExpr =>
+        Seq(astForUnaryExpr("<operator>.lengthOf", x, x.getOp, order, parentUnit))
+      case x: NegExpr => Seq(astForUnaryExpr(Operators.minus, x, x.getOp, order, parentUnit))
       case x =>
         logger.warn(s"Unhandled soot.Expr type ${x.getClass}")
         Seq()
@@ -323,14 +334,14 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
-      case x: Expr        => astsForExpression(x, order, parentUnit)
-      case x: Local       => Seq(astForLocal(x, order, parentUnit))
-      case x: IdentityRef => Seq(astForIdentityRef(x, order, parentUnit))
-      case x: Constant    => Seq(astForConstantExpr(x, order))
-      case x: FieldRef    => Seq(astForFieldRef(x, order, parentUnit))
-//      case x: CaughtExceptionRef => Seq()
-      case x: ThisRef      => Seq(createThisNode(x))
-      case x: ParameterRef => Seq(createParameterNode(x, order))
+      case x: Expr               => astsForExpression(x, order, parentUnit)
+      case x: Local              => Seq(astForLocal(x, order, parentUnit))
+      case x: IdentityRef        => Seq(astForIdentityRef(x, order, parentUnit))
+      case x: Constant           => Seq(astForConstantExpr(x, order))
+      case x: FieldRef           => Seq(astForFieldRef(x, order, parentUnit))
+      case x: CaughtExceptionRef => Seq(astForCaughtExceptionRef(x, order, parentUnit))
+      case x: ThisRef            => Seq(createThisNode(x))
+      case x: ParameterRef       => Seq(createParameterNode(x, order))
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()
@@ -414,6 +425,29 @@ class AstCreator(filename: String, global: Global) {
     )
   }
 
+  private def astForUnaryExpr(
+      methodName: String,
+      unaryExpr: Expr,
+      op: Value,
+      order: Int,
+      parentUnit: soot.Unit
+  ): Ast = {
+    val callBlock = NewCall()
+      .name(methodName)
+      .methodFullName(methodName)
+      .code(unaryExpr.toString())
+      .dispatchType(DispatchTypes.STATIC_DISPATCH)
+      .order(order)
+      .typeFullName(unaryExpr.getType.toQuotedString)
+      .argumentIndex(order)
+      .lineNumber(line(parentUnit))
+      .columnNumber(column(parentUnit))
+    val valueAsts = astsForValue(op, 1, parentUnit)
+    Ast(callBlock)
+      .withChildren(valueAsts)
+      .withArgEdges(callBlock, valueAsts.flatMap(_.root))
+  }
+
   private def createThisNode(method: ThisRef): Ast = {
     Ast(
       NewIdentifier()
@@ -479,15 +513,22 @@ class AstCreator(filename: String, global: Global) {
     ) ++ initializerAst.toList
   }
 
-  private def astsForReturnNode(x: ReturnStmt, order: Int): Seq[Ast] = {
+  private def astsForReturnNode(returnStmt: ReturnStmt, order: Int): Seq[Ast] = {
     Seq(
-      Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x)))
-        .withChildren(astsForValue(x.getOp, order + 1, x))
+      Ast(NewReturn().order(order).lineNumber(line(returnStmt)).columnNumber(column(returnStmt)))
+        .withChildren(astsForValue(returnStmt.getOp, order + 1, returnStmt))
     )
   }
 
-  private def astsForReturnVoidNode(x: ReturnVoidStmt, order: Int): Seq[Ast] = {
-    Seq(Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x))))
+  private def astsForReturnVoidNode(returnVoidStmt: ReturnVoidStmt, order: Int): Seq[Ast] = {
+    Seq(
+      Ast(
+        NewReturn()
+          .order(order)
+          .lineNumber(line(returnVoidStmt))
+          .columnNumber(column(returnVoidStmt))
+      )
+    )
   }
 
   private def astForFieldRef(fieldRef: FieldRef, order: Int, parentUnit: soot.Unit): Ast = {
@@ -534,6 +575,23 @@ class AstCreator(filename: String, global: Global) {
     Ast(fieldAccessBlock)
       .withChildren(argAsts)
       .withArgEdges(fieldAccessBlock, argAsts.flatMap(_.root))
+  }
+
+  private def astForCaughtExceptionRef(
+      caughtException: CaughtExceptionRef,
+      order: Int,
+      parentUnit: soot.Unit
+  ): Ast = {
+    Ast(
+      NewIdentifier()
+        .order(order)
+        .argumentIndex(order)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .name(caughtException.toString())
+        .code(caughtException.toString())
+        .typeFullName(caughtException.getType.toQuotedString)
+    )
   }
 
   private def astForConstantExpr(constant: Constant, order: Int): Ast = {
