@@ -1,85 +1,16 @@
 package io.joern.jimple2cpg.passes
 
+import io.shiftleft.codepropertygraph.generated.nodes._
 import io.shiftleft.codepropertygraph.generated.{DispatchTypes, EdgeTypes, Operators}
-import io.shiftleft.codepropertygraph.generated.nodes.{
-  NewBlock,
-  NewCall,
-  NewIdentifier,
-  NewLiteral,
-  NewLocal,
-  NewMember,
-  NewMethod,
-  NewMethodParameterIn,
-  NewMethodReturn,
-  NewNamespaceBlock,
-  NewNode,
-  NewReturn,
-  NewTypeDecl
-}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import org.slf4j.LoggerFactory
-import soot.jimple.{
-  AddExpr,
-  AndExpr,
-  AssignStmt,
-  BinopExpr,
-  ClassConstant,
-  CmpExpr,
-  CmpgExpr,
-  CmplExpr,
-  Constant,
-  DefinitionStmt,
-  DivExpr,
-  DoubleConstant,
-  DynamicInvokeExpr,
-  EqExpr,
-  Expr,
-  FloatConstant,
-  GeExpr,
-  GotoStmt,
-  GtExpr,
-  IdentityRef,
-  IdentityStmt,
-  IfStmt,
-  InstanceFieldRef,
-  InstanceInvokeExpr,
-  IntConstant,
-  InvokeExpr,
-  InvokeStmt,
-  LeExpr,
-  LongConstant,
-  LookupSwitchStmt,
-  LtExpr,
-  MonitorStmt,
-  MulExpr,
-  NewArrayExpr,
-  NewExpr,
-  NullConstant,
-  OrExpr,
-  ParameterRef,
-  RemExpr,
-  ReturnStmt,
-  ReturnVoidStmt,
-  ShlExpr,
-  ShrExpr,
-  StaticFieldRef,
-  StaticInvokeExpr,
-  StringConstant,
-  SubExpr,
-  TableSwitchStmt,
-  ThisRef,
-  ThrowStmt,
-  UshrExpr,
-  VirtualInvokeExpr,
-  XorExpr
-}
+import soot.jimple._
 import soot.tagkit.Host
-import soot.{Body, Local, RefType, SootClass, SootField, SootMethod}
+import soot.{Local => _, _}
 
 import java.io.File
 import scala.jdk.CollectionConverters.CollectionHasAsScala
-import scala.util.Try
 
 class AstCreator(filename: String, global: Global) {
 
@@ -109,7 +40,7 @@ class AstCreator(filename: String, global: Global) {
 
   /** Copy nodes/edges of given `AST` into the diff graph
     */
-  private def storeInDiffGraph(ast: Ast): Unit = {
+  private def storeInDiffGraph(ast: Ast): scala.Unit = {
     ast.nodes.foreach { node =>
       diffGraph.addNode(node)
     }
@@ -155,7 +86,7 @@ class AstCreator(filename: String, global: Global) {
     val fullName = typ.toQuotedString
     val filename =
       if (fullName.contains('.'))
-        s"${File.separator}${fullName.replace(".", File.separator).replace("[]", "")}.class"
+        s"${File.separator}${this.filename}"
       else fullName
     val shortName =
       if (fullName.contains('.')) fullName.substring(fullName.lastIndexOf('.') + 1)
@@ -166,7 +97,8 @@ class AstCreator(filename: String, global: Global) {
       .fullName(registerType(fullName))
       .order(order)
       .filename(filename)
-      .code(fullName)
+      .code(shortName)
+//      .inheritsFromTypeFullName TODO: Handle this with soot.FashHeirarchy
       .astParentType("NAMESPACE_BLOCK")
       .astParentFullName(namespaceBlockFullName)
 
@@ -226,7 +158,7 @@ class AstCreator(filename: String, global: Global) {
   }
 
   private def astForParameter(
-      parameter: Local,
+      parameter: soot.Local,
       childNum: Int,
       methodDeclaration: SootMethod
   ): Ast = {
@@ -269,7 +201,7 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  def astForBinOpExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
+  private def astForBinOpExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
     val operatorName = binOp match {
       case _: AddExpr  => Operators.addition
       case _: SubExpr  => Operators.subtraction
@@ -310,8 +242,13 @@ class AstCreator(filename: String, global: Global) {
     expr match {
       case x: BinopExpr  => Seq(astForBinOpExpr(x, order, parentUnit))
       case x: InvokeExpr => Seq(astForInvokeExpr(x, order, parentUnit))
-//      case x: NewExpr      => Seq()
-//      case x: NewArrayExpr => Seq()
+      case x: AnyNewExpr => Seq(astForNewExpr(x, order, parentUnit))
+      case x: CastExpr   => Seq(astForUnaryExpr(Operators.cast, x, x.getOp, order, parentUnit))
+      case x: InstanceOfExpr =>
+        Seq(astForUnaryExpr(Operators.instanceOf, x, x.getOp, order, parentUnit))
+      case x: LengthExpr =>
+        Seq(astForUnaryExpr("<operator>.lengthOf", x, x.getOp, order, parentUnit))
+      case x: NegExpr => Seq(astForUnaryExpr(Operators.minus, x, x.getOp, order, parentUnit))
       case x =>
         logger.warn(s"Unhandled soot.Expr type ${x.getClass}")
         Seq()
@@ -320,22 +257,21 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForValue(value: soot.Value, order: Int, parentUnit: soot.Unit): Seq[Ast] = {
     value match {
-      case x: Expr  => astsForExpression(x, order, parentUnit)
-      case x: Local => Seq(astForLocal(x, order, parentUnit))
-//      case x: IdentityRef        => Seq()
-      case x: Constant => Seq(astForConstantExpr(x, order))
-//      case x: StaticFieldRef     => Seq()
-//      case x: CaughtExceptionRef => Seq()
-//      case x: InstanceFieldRef   => Seq()
-      case x: ThisRef      => Seq(createThisNode(x))
-      case x: ParameterRef => Seq(createParameterNode(x, order))
+      case x: Expr               => astsForExpression(x, order, parentUnit)
+      case x: soot.Local         => Seq(astForLocal(x, order, parentUnit))
+      case x: CaughtExceptionRef => Seq(astForCaughtExceptionRef(x, order, parentUnit))
+      case x: Constant           => Seq(astForConstantExpr(x, order))
+      case x: FieldRef           => Seq(astForFieldRef(x, order, parentUnit))
+      case x: ThisRef            => Seq(createThisNode(x))
+      case x: ParameterRef       => Seq(createParameterNode(x, order))
+      case x: IdentityRef        => Seq(astForIdentityRef(x, order, parentUnit))
       case x =>
         logger.warn(s"Unhandled soot.Value type ${x.getClass}")
         Seq()
     }
   }
 
-  private def astForLocal(local: Local, order: Int, parentUnit: soot.Unit): Ast = {
+  private def astForLocal(local: soot.Local, order: Int, parentUnit: soot.Unit): Ast = {
     val name         = local.getName
     val typeFullName = registerType(local.getType.toQuotedString)
     Ast(
@@ -347,6 +283,19 @@ class AstCreator(filename: String, global: Global) {
         .argumentIndex(order)
         .code(name)
         .typeFullName(typeFullName)
+    )
+  }
+
+  private def astForIdentityRef(x: IdentityRef, order: Int, parentUnit: soot.Unit): Ast = {
+    Ast(
+      NewIdentifier()
+        .code(x.toString())
+        .name(x.toString())
+        .order(order)
+        .argumentIndex(order)
+        .typeFullName(x.getType.toQuotedString)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
     )
   }
 
@@ -385,6 +334,41 @@ class AstCreator(filename: String, global: Global) {
       .withChildren(argAsts)
       .withArgEdges(callNode, thisAsts.flatMap(_.root))
       .withArgEdges(callNode, argAsts.flatMap(_.root))
+  }
+
+  private def astForNewExpr(x: AnyNewExpr, order: Int, parentUnit: soot.Unit): Ast = {
+    Ast(
+      NewUnknown()
+        .typeFullName(x.getType.toQuotedString)
+        .code("new")
+        .order(order)
+        .argumentIndex(order)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+    )
+  }
+
+  private def astForUnaryExpr(
+      methodName: String,
+      unaryExpr: Expr,
+      op: Value,
+      order: Int,
+      parentUnit: soot.Unit
+  ): Ast = {
+    val callBlock = NewCall()
+      .name(methodName)
+      .methodFullName(methodName)
+      .code(unaryExpr.toString())
+      .dispatchType(DispatchTypes.STATIC_DISPATCH)
+      .order(order)
+      .typeFullName(unaryExpr.getType.toQuotedString)
+      .argumentIndex(order)
+      .lineNumber(line(parentUnit))
+      .columnNumber(column(parentUnit))
+    val valueAsts = astsForValue(op, 1, parentUnit)
+    Ast(callBlock)
+      .withChildren(valueAsts)
+      .withArgEdges(callBlock, valueAsts.flatMap(_.root))
   }
 
   private def createThisNode(method: ThisRef): Ast = {
@@ -428,7 +412,7 @@ class AstCreator(filename: String, global: Global) {
   /** Creates the AST for assignment statements keeping in mind Jimple is a 3-address code language.
     */
   private def astsForDefinition(assignStmt: DefinitionStmt, order: Int): Seq[Ast] = {
-    val leftOp       = assignStmt.getLeftOp.asInstanceOf[Local]
+    val leftOp       = assignStmt.getLeftOp.asInstanceOf[soot.Local]
     val initializer  = assignStmt.getRightOp
     val name         = leftOp.getName
     val code         = leftOp.getType.toQuotedString + " " + leftOp.getName
@@ -452,18 +436,88 @@ class AstCreator(filename: String, global: Global) {
     ) ++ initializerAst.toList
   }
 
-  def astsForReturnNode(x: ReturnStmt, order: Int): Seq[Ast] = {
+  private def astsForReturnNode(returnStmt: ReturnStmt, order: Int): Seq[Ast] = {
     Seq(
-      Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x)))
-        .withChildren(astsForValue(x.getOp, order + 1, x))
+      Ast(NewReturn().order(order).lineNumber(line(returnStmt)).columnNumber(column(returnStmt)))
+        .withChildren(astsForValue(returnStmt.getOp, order + 1, returnStmt))
     )
   }
 
-  def astsForReturnVoidNode(x: ReturnVoidStmt, order: Int): Seq[Ast] = {
-    Seq(Ast(NewReturn().order(order).lineNumber(line(x)).columnNumber(column(x))))
+  private def astsForReturnVoidNode(returnVoidStmt: ReturnVoidStmt, order: Int): Seq[Ast] = {
+    Seq(
+      Ast(
+        NewReturn()
+          .order(order)
+          .lineNumber(line(returnVoidStmt))
+          .columnNumber(column(returnVoidStmt))
+      )
+    )
   }
 
-  def astForConstantExpr(constant: Constant, order: Int): Ast = {
+  private def astForFieldRef(fieldRef: FieldRef, order: Int, parentUnit: soot.Unit): Ast = {
+    val leftOpString = fieldRef match {
+      case x: StaticFieldRef   => x.getFieldRef.declaringClass().toString
+      case x: InstanceFieldRef => x.getBase.toString()
+      case _                   => fieldRef.getFieldRef.declaringClass().toString
+    }
+    val leftOpType = fieldRef match {
+      case x: StaticFieldRef   => x.getFieldRef.declaringClass().getType
+      case x: InstanceFieldRef => x.getBase.getType
+      case _                   => fieldRef.getFieldRef.declaringClass().getType
+    }
+    val fieldAccessBlock = NewCall()
+      .name(Operators.fieldAccess)
+      .code(s"${leftOpType.toQuotedString}.${fieldRef.getField.getName}")
+      .typeFullName(fieldRef.getType.toQuotedString)
+      .methodFullName(Operators.fieldAccess)
+      .dispatchType(DispatchTypes.STATIC_DISPATCH)
+      .order(order)
+      .argumentIndex(order)
+      .lineNumber(line(parentUnit))
+      .columnNumber(column(parentUnit))
+      .build
+
+    val argAsts = Seq(
+      NewIdentifier()
+        .order(1)
+        .argumentIndex(1)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .name(leftOpString)
+        .code(leftOpString)
+        .typeFullName(leftOpType.toQuotedString),
+      NewFieldIdentifier()
+        .order(2)
+        .argumentIndex(2)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .canonicalName(fieldRef.getField.getSignature)
+        .code(fieldRef.getField.getName)
+    ).map(Ast(_))
+
+    Ast(fieldAccessBlock)
+      .withChildren(argAsts)
+      .withArgEdges(fieldAccessBlock, argAsts.flatMap(_.root))
+  }
+
+  private def astForCaughtExceptionRef(
+      caughtException: CaughtExceptionRef,
+      order: Int,
+      parentUnit: soot.Unit
+  ): Ast = {
+    Ast(
+      NewIdentifier()
+        .order(order)
+        .argumentIndex(order)
+        .lineNumber(line(parentUnit))
+        .columnNumber(column(parentUnit))
+        .name(caughtException.toString())
+        .code(caughtException.toString())
+        .typeFullName(caughtException.getType.toQuotedString)
+    )
+  }
+
+  private def astForConstantExpr(constant: Constant, order: Int): Ast = {
     constant match {
       case _: ClassConstant => Ast()
       case _: NullConstant  => Ast()
@@ -511,7 +565,7 @@ class AstCreator(filename: String, global: Global) {
     }
   }
 
-  def callAst(rootNode: NewNode, args: Seq[Ast]): Ast = {
+  private def callAst(rootNode: NewNode, args: Seq[Ast]): Ast = {
     Ast(rootNode)
       .withChildren(args)
       .withArgEdges(rootNode, args.flatMap(_.root))
