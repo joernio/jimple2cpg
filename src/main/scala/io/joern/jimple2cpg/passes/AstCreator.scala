@@ -10,6 +10,7 @@ import soot.tagkit.Host
 import soot.{Local => _, _}
 
 import java.io.File
+import scala.collection.mutable
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 
 class AstCreator(filename: String, global: Global) {
@@ -17,6 +18,8 @@ class AstCreator(filename: String, global: Global) {
   import AstCreator._
 
   private val logger               = LoggerFactory.getLogger(classOf[AstCreationPass])
+  private val unitToAsts           = mutable.HashMap[soot.Unit, Seq[Ast]]()
+  private val controlTargets       = mutable.HashMap[Seq[Ast], soot.Unit]()
   val diffGraph: DiffGraph.Builder = DiffGraph.newBuilder
 
   /** Add `typeName` to a global map and return it. The
@@ -61,7 +64,7 @@ class AstCreator(filename: String, global: Global) {
     val ast = astForPackageDeclaration(cls.getPackageName)
     val namespaceBlockFullName =
       ast.root.collect { case x: NewNamespaceBlock => x.fullName }.getOrElse("none")
-    ast.withChild(astForTypeDecl(cls.getType, 1, namespaceBlockFullName))
+    ast.withChild(astForTypeDecl(cls.getType, namespaceBlockFullName))
   }
 
   /** Translate package declaration into AST consisting of
@@ -78,11 +81,7 @@ class AstCreator(filename: String, global: Global) {
 
   /** Creates the AST root for type declarations and acts as the entry point for method generation.
     */
-  private def astForTypeDecl(
-      typ: RefType,
-      order: Int,
-      namespaceBlockFullName: String
-  ): Ast = {
+  private def astForTypeDecl(typ: RefType, namespaceBlockFullName: String): Ast = {
     val fullName = typ.toQuotedString
     val filename =
       if (fullName.contains('.'))
@@ -95,7 +94,7 @@ class AstCreator(filename: String, global: Global) {
     val typeDecl = NewTypeDecl()
       .name(shortName)
       .fullName(registerType(fullName))
-      .order(order)
+      .order(1) // Jimple always has 1 class per file
       .filename(filename)
       .code(shortName)
 //      .inheritsFromTypeFullName TODO: Handle this with soot.FashHeirarchy
@@ -154,6 +153,18 @@ class AstCreator(filename: String, global: Global) {
         logger.warn("Unable to parse method body.", e)
         Ast(methodNode)
           .withChild(astForMethodReturn(methodDeclaration))
+    } finally {
+      // Join all targets with CFG edges - this seems to work from what is seen on DotFiles
+      controlTargets.foreach({ case (asts, units) =>
+        asts.headOption match {
+          case Some(value) =>
+            diffGraph.addEdge(value.root.get, unitToAsts(units).last.root.get, EdgeTypes.CFG)
+          case None =>
+        }
+      })
+      // Clear these maps
+      controlTargets.clear()
+      unitToAsts.clear()
     }
   }
 
@@ -183,22 +194,24 @@ class AstCreator(filename: String, global: Global) {
   }
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
-    statement match {
-      case x: AssignStmt => astsForDefinition(x, order)
-//      case x: IfStmt           => Seq()
-//      case x: GotoStmt         => Seq()
+    val stmt = statement match {
+      case x: AssignStmt   => astsForDefinition(x, order)
+      case x: IfStmt       => astsForIfStmt(x, order)
+      case x: GotoStmt     => astsForGotoStmt(x, order)
       case x: IdentityStmt => astsForDefinition(x, order)
-//      case x: LookupSwitchStmt => Seq()
-//      case x: TableSwitchStmt  => Seq()
+      //      case x: LookupSwitchStmt => Seq()
+      //      case x: TableSwitchStmt  => Seq()
       case x: InvokeStmt     => astsForExpression(x.getInvokeExpr, order, statement)
       case x: ReturnStmt     => astsForReturnNode(x, order)
       case x: ReturnVoidStmt => astsForReturnVoidNode(x, order)
-//      case x: ThrowStmt        => Seq()
-//      case x: MonitorStmt      => Seq()
+      //      case x: ThrowStmt        => Seq()
+      //      case x: MonitorStmt      => Seq()
       case x =>
         logger.warn(s"Unhandled soot.Unit type ${x.getClass}")
         Seq()
     }
+    unitToAsts.put(statement, stmt)
+    stmt
   }
 
   private def astForBinOpExpr(binOp: BinopExpr, order: Int, parentUnit: soot.Unit): Ast = {
@@ -434,6 +447,29 @@ class AstCreator(filename: String, global: Global) {
         NewLocal().name(name).code(code).typeFullName(typeFullName).order(order)
       )
     ) ++ initializerAst.toList
+  }
+
+  private def astsForIfStmt(ifStmt: IfStmt, order: Int): Seq[Ast] = {
+    // bytecode/jimple ASTs are flat so there will not be nested bodies
+    val condition = astsForValue(ifStmt.getCondition, order, ifStmt)
+    controlTargets.put(condition, ifStmt.getTarget)
+    condition
+  }
+
+  private def astsForGotoStmt(gotoStmt: GotoStmt, order: Int): Seq[Ast] = {
+    // bytecode/jimple ASTs are flat so there will not be nested bodies
+    val gotoAst = Seq(
+      Ast(
+        NewUnknown()
+          .code(gotoStmt.toString)
+          .order(order)
+          .argumentIndex(order)
+          .lineNumber(line(gotoStmt))
+          .columnNumber(column(gotoStmt))
+      )
+    )
+    controlTargets.put(gotoAst, gotoStmt.getTarget)
+    gotoAst
   }
 
   private def astsForReturnNode(returnStmt: ReturnStmt, order: Int): Seq[Ast] = {
