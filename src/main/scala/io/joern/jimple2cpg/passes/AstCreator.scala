@@ -1,7 +1,12 @@
 package io.joern.jimple2cpg.passes
 
 import io.shiftleft.codepropertygraph.generated.nodes._
-import io.shiftleft.codepropertygraph.generated.{DispatchTypes, EdgeTypes, Operators}
+import io.shiftleft.codepropertygraph.generated.{
+  ControlStructureTypes,
+  DispatchTypes,
+  EdgeTypes,
+  Operators
+}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import org.slf4j.LoggerFactory
@@ -195,15 +200,15 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
     val stmt = statement match {
-      case x: AssignStmt   => astsForDefinition(x, order)
-      case x: IfStmt       => astsForIfStmt(x, order)
-      case x: GotoStmt     => astsForGotoStmt(x, order)
-      case x: IdentityStmt => astsForDefinition(x, order)
-      //      case x: LookupSwitchStmt => Seq()
+      case x: AssignStmt       => astsForDefinition(x, order)
+      case x: IdentityStmt     => astsForDefinition(x, order)
+      case x: InvokeStmt       => astsForExpression(x.getInvokeExpr, order, statement)
+      case x: ReturnStmt       => astsForReturnNode(x, order)
+      case x: ReturnVoidStmt   => astsForReturnVoidNode(x, order)
+      case x: IfStmt           => astsForIfStmt(x, order)
+      case x: GotoStmt         => astsForGotoStmt(x, order)
+      case x: LookupSwitchStmt => astsForLookupSwitchStmt(x, order)
       //      case x: TableSwitchStmt  => Seq()
-      case x: InvokeStmt     => astsForExpression(x.getInvokeExpr, order, statement)
-      case x: ReturnStmt     => astsForReturnNode(x, order)
-      case x: ReturnVoidStmt => astsForReturnVoidNode(x, order)
       //      case x: ThrowStmt        => Seq()
       //      case x: MonitorStmt      => Seq()
       case x =>
@@ -470,6 +475,53 @@ class AstCreator(filename: String, global: Global) {
     )
     controlTargets.put(gotoAst, gotoStmt.getTarget)
     gotoAst
+  }
+
+  def astsForLookupSwitchStmt(lookupSwitchStmt: LookupSwitchStmt, order: Int): Seq[Ast] = {
+    val jimple    = lookupSwitchStmt.toString()
+    val totalTgts = lookupSwitchStmt.getTargetCount
+    val switch = NewControlStructure()
+      .controlStructureType(ControlStructureTypes.SWITCH)
+      .code(jimple.substring(0, jimple.indexOf("{")))
+      .lineNumber(line(lookupSwitchStmt))
+      .columnNumber(column(lookupSwitchStmt))
+      .order(order)
+      .argumentIndex(order)
+
+    val conditionalAst = astsForValue(lookupSwitchStmt.getKey, totalTgts + 2, lookupSwitchStmt)
+    val defaultAst = Seq(
+      Ast(
+        NewJumpTarget()
+          .name("default")
+          .code("default:")
+          .order(totalTgts + 3)
+          .argumentIndex(totalTgts + 3)
+          .lineNumber(line(lookupSwitchStmt.getDefaultTarget))
+          .columnNumber(column(lookupSwitchStmt.getDefaultTarget))
+      )
+    )
+
+    val tgts = for {
+      i <- 0 until totalTgts
+      if lookupSwitchStmt.getTarget(i) != lookupSwitchStmt.getDefaultTarget
+    } yield (lookupSwitchStmt.getLookupValue(i), lookupSwitchStmt.getTarget(i))
+    val tgtAsts = tgts.map { case (lookup, target) =>
+      Ast(
+        NewJumpTarget()
+          .name(s"case $lookup")
+          .code(s"case $lookup:")
+          .argumentIndex(lookup)
+          .order(lookup)
+          .lineNumber(line(target))
+          .columnNumber(column(target))
+      )
+    }
+
+    Seq(
+      Ast(switch)
+        .withChildren(tgtAsts ++ conditionalAst ++ defaultAst)
+        .withConditionEdge(switch, conditionalAst)
+    )
   }
 
   private def astsForReturnNode(returnStmt: ReturnStmt, order: Int): Seq[Ast] = {
