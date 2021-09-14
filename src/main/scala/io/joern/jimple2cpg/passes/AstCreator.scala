@@ -1,7 +1,12 @@
 package io.joern.jimple2cpg.passes
 
 import io.shiftleft.codepropertygraph.generated.nodes._
-import io.shiftleft.codepropertygraph.generated.{DispatchTypes, EdgeTypes, Operators}
+import io.shiftleft.codepropertygraph.generated.{
+  ControlStructureTypes,
+  DispatchTypes,
+  EdgeTypes,
+  Operators
+}
 import io.shiftleft.passes.DiffGraph
 import io.shiftleft.x2cpg.Ast
 import org.slf4j.LoggerFactory
@@ -195,17 +200,17 @@ class AstCreator(filename: String, global: Global) {
 
   private def astsForStatement(statement: soot.Unit, order: Int): Seq[Ast] = {
     val stmt = statement match {
-      case x: AssignStmt   => astsForDefinition(x, order)
-      case x: IfStmt       => astsForIfStmt(x, order)
-      case x: GotoStmt     => astsForGotoStmt(x, order)
-      case x: IdentityStmt => astsForDefinition(x, order)
-      //      case x: LookupSwitchStmt => Seq()
-      //      case x: TableSwitchStmt  => Seq()
-      case x: InvokeStmt     => astsForExpression(x.getInvokeExpr, order, statement)
-      case x: ReturnStmt     => astsForReturnNode(x, order)
-      case x: ReturnVoidStmt => astsForReturnVoidNode(x, order)
-      //      case x: ThrowStmt        => Seq()
-      //      case x: MonitorStmt      => Seq()
+      case x: AssignStmt       => astsForDefinition(x, order)
+      case x: IdentityStmt     => astsForDefinition(x, order)
+      case x: InvokeStmt       => astsForExpression(x.getInvokeExpr, order, statement)
+      case x: ReturnStmt       => astsForReturnNode(x, order)
+      case x: ReturnVoidStmt   => astsForReturnVoidNode(x, order)
+      case x: IfStmt           => astsForIfStmt(x, order)
+      case x: GotoStmt         => astsForGotoStmt(x, order)
+      case x: LookupSwitchStmt => astsForLookupSwitchStmt(x, order)
+      case x: TableSwitchStmt  => astsForTableSwitchStmt(x, order)
+      case x: ThrowStmt        => Seq(astForUnknownStmt(x, x.getOp, order))
+      case x: MonitorStmt      => Seq(astForUnknownStmt(x, x.getOp, order))
       case x =>
         logger.warn(s"Unhandled soot.Unit type ${x.getClass}")
         Seq()
@@ -470,6 +475,96 @@ class AstCreator(filename: String, global: Global) {
     )
     controlTargets.put(gotoAst, gotoStmt.getTarget)
     gotoAst
+  }
+
+  private def astForSwitchWithDefaultAndCondition(switchStmt: SwitchStmt, order: Int): Ast = {
+    val jimple    = switchStmt.toString()
+    val totalTgts = switchStmt.getTargets.size()
+    val switch = NewControlStructure()
+      .controlStructureType(ControlStructureTypes.SWITCH)
+      .code(jimple.substring(0, jimple.indexOf("{") - 1))
+      .lineNumber(line(switchStmt))
+      .columnNumber(column(switchStmt))
+      .order(order)
+      .argumentIndex(order)
+
+    val conditionalAst = astsForValue(switchStmt.getKey, totalTgts + 1, switchStmt)
+    val defaultAst = Seq(
+      Ast(
+        NewJumpTarget()
+          .name("default")
+          .code("default:")
+          .order(totalTgts + 2)
+          .argumentIndex(totalTgts + 2)
+          .lineNumber(line(switchStmt.getDefaultTarget))
+          .columnNumber(column(switchStmt.getDefaultTarget))
+      )
+    )
+    Ast(switch)
+      .withConditionEdge(switch, conditionalAst.flatMap(_.root).head)
+      .withChildren(conditionalAst ++ defaultAst)
+  }
+
+  private def astsForLookupSwitchStmt(lookupSwitchStmt: LookupSwitchStmt, order: Int): Seq[Ast] = {
+    val totalTgts = lookupSwitchStmt.getTargets.size()
+    val switchAst = astForSwitchWithDefaultAndCondition(lookupSwitchStmt, order)
+
+    val tgts = for {
+      i <- 0 until totalTgts
+      if lookupSwitchStmt.getTarget(i) != lookupSwitchStmt.getDefaultTarget
+    } yield (lookupSwitchStmt.getLookupValue(i), lookupSwitchStmt.getTarget(i))
+    val tgtAsts = tgts.map { case (lookup, target) =>
+      Ast(
+        NewJumpTarget()
+          .name(s"case $lookup")
+          .code(s"case $lookup:")
+          .argumentIndex(lookup)
+          .order(lookup)
+          .lineNumber(line(target))
+          .columnNumber(column(target))
+      )
+    }
+
+    Seq(
+      switchAst
+        .withChildren(tgtAsts)
+    )
+  }
+
+  private def astsForTableSwitchStmt(tableSwitchStmt: SwitchStmt, order: Int): Seq[Ast] = {
+    val switchAst = astForSwitchWithDefaultAndCondition(tableSwitchStmt, order)
+    val tgtAsts = tableSwitchStmt.getTargets.asScala
+      .filter(x => tableSwitchStmt.getDefaultTarget != x)
+      .zipWithIndex
+      .map({ case (tgt, i) =>
+        Ast(
+          NewJumpTarget()
+            .name(s"case $i")
+            .code(s"case $i:")
+            .argumentIndex(i)
+            .order(i)
+            .lineNumber(line(tgt))
+            .columnNumber(column(tgt))
+        )
+      })
+      .toSeq
+
+    Seq(
+      switchAst
+        .withChildren(tgtAsts)
+    )
+  }
+
+  private def astForUnknownStmt(stmt: Stmt, op: Value, order: Int): Ast = {
+    val opAst = astsForValue(op, 1, stmt)
+    val unknown = NewUnknown()
+      .order(order)
+      .code(stmt.toString())
+      .lineNumber(line(stmt))
+      .columnNumber(column(stmt))
+      .typeFullName("void")
+    Ast(unknown)
+      .withChildren(opAst)
   }
 
   private def astsForReturnNode(returnStmt: ReturnStmt, order: Int): Seq[Ast] = {
