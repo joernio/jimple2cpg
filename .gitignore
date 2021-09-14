@@ -24,3 +24,5 @@ target
 /.bsp
 /joern-cli.zip
 **.DS_Store
+*.bin
+*.odb
