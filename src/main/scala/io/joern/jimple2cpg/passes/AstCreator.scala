@@ -105,7 +105,6 @@ class AstCreator(filename: String, global: Global) {
 //      .inheritsFromTypeFullName TODO: Handle this with soot.FashHeirarchy
       .astParentType("NAMESPACE_BLOCK")
       .astParentFullName(namespaceBlockFullName)
-
     val methodAsts = withOrder(
       typ.getSootClass.getMethods.asScala.toList.sortWith((x, y) => x.getName > y.getName)
     ) { (m, order) =>
