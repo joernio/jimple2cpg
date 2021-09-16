@@ -25,7 +25,7 @@ import java.nio.file.Files
 import java.util.zip.ZipFile
 import scala.jdk.CollectionConverters.EnumerationHasAsScala
 import scala.language.postfixOps
-import scala.util.Using
+import scala.util.{Failure, Success, Using}
 
 object Jimple2Cpg {
   val language = "JIMPLEPARSER"
@@ -48,8 +48,8 @@ class Jimple2Cpg {
       outputPath: Option[String] = None
   ): Cpg = {
     configureSoot(sourceCodePath)
-    val cpg = newEmptyCpg(outputPath)
 
+    val cpg             = newEmptyCpg(outputPath)
     val metaDataKeyPool = new IntervalKeyPool(1, 100)
     val typesKeyPool    = new IntervalKeyPool(100, 1000100)
     val methodKeyPool   = new IntervalKeyPool(first = 1000100, last = Long.MaxValue)
@@ -60,10 +60,21 @@ class Jimple2Cpg {
     val archiveFileExtensions = Set(".jar", ".war")
     // Unpack any archives on the path onto the source code path as project root
     val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
-    archives.map(new ZipFile(_)).foreach(unzipArchive(_, sourceCodePath))
-    // Load source files
-    val sourceFileNames = SourceFiles.determine(Set(sourceCodePath), sourceFileExtensions)
-    val astCreator      = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
+    // Load source files and unpack archives if necessary
+    val sourceFileNames = (archives
+      .map(new ZipFile(_))
+      .flatMap(x => {
+        unzipArchive(x, sourceCodePath) match {
+          case Failure(e) =>
+            logger.error(s"Error extracting files from archive at ${x.getName}", e); null
+          case Success(value) => value
+        }
+      })
+      .map(_.getAbsolutePath) ++ SourceFiles.determine(
+      Set(sourceCodePath),
+      sourceFileExtensions
+    )).distinct
+    val astCreator = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
     astCreator.createAndApply()
 
     new CfgCreationPass(cpg).createAndApply()
@@ -126,7 +137,16 @@ class Jimple2Cpg {
         .filter(!_.isDirectory)
         .filter(_.getName.contains(".class"))
         .flatMap(entry => {
-          val destFile = new JFile(sourceCodePath + JFile.separator + entry.getName)
+          val sourceCodePathFile = new JFile(sourceCodePath)
+          // Handle the case if the input source code path is an archive itself
+          val destFile = if (sourceCodePathFile.isDirectory) {
+            new JFile(sourceCodePath + JFile.separator + entry.getName)
+          } else {
+            new JFile(
+              sourceCodePathFile.getParentFile.getAbsolutePath + JFile.separator + entry.getName
+            )
+          }
+          // dirName accounts for nested directories as a result of JAR package structure
           val dirName = destFile.getAbsolutePath
             .substring(0, destFile.getAbsolutePath.lastIndexOf(JFile.separator))
           // Create directory path

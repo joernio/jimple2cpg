@@ -2,7 +2,7 @@ package io.joern.jimple2cpg.unpacking
 
 import io.joern.jimple2cpg.Jimple2Cpg
 import io.shiftleft.codepropertygraph.Cpg
-import io.shiftleft.semanticcpg.language.{toMethodTraversalExtGen, toNodeTypeStarters, toNodeTypeStartersOperatorExtension}
+import io.shiftleft.semanticcpg.language.{toMethodTraversalExtGen, toNodeTypeStarters}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
