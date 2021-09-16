@@ -59,7 +59,6 @@ class Jimple2Cpg {
     val sourceFileExtensions  = Set(".class", ".jimple")
     val archiveFileExtensions = Set(".jar", ".war")
     // Unpack any archives on the path onto the source code path as project root
-    println(SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions))
     val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
     // Load source files and unpack archives if necessary
     val sourceFileNames = (archives
