@@ -36,7 +36,7 @@ class AstCreationPass(codePath: String, filenames: List[String], cpg: Cpg, keyPo
         .createAst(Scene.v().loadClassAndSupport(qualifiedClassName))
     } catch {
       case e: Exception =>
-        logger.warn("Cannot parse: " + filename, e)
+        logger.warn(s"Cannot parse: $filename ($qualifiedClassName)", e)
         Iterator()
     }
   }
