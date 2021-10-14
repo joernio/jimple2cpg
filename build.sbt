@@ -3,7 +3,9 @@ organization := "io.joern"
 
 scalaVersion := "2.13.6"
 
-val cpgVersion       = "1.3.314"
+val cpgVersion       = "1.3.373"
+val sootVersion      = "4.2.1"
+val slf4jVersion     = "1.7.32"
 val scalatestVersion = "3.1.1"
 
 Test / fork := true
@@ -20,7 +22,9 @@ libraryDependencies ++= Seq(
   "io.shiftleft"  %% "semanticcpg"       % cpgVersion,
   "io.shiftleft"  %% "dataflowengineoss" % cpgVersion,
   "io.shiftleft"  %% "semanticcpg-tests" % cpgVersion       % Test classifier "tests",
-  "org.soot-oss"   % "soot"              % "4.2.1",
+  "org.soot-oss"   % "soot"              % sootVersion,
+  "org.slf4j"      % "slf4j-api"         % slf4jVersion,
+  "org.slf4j"      % "slf4j-simple"      % slf4jVersion,
   "org.scalatest" %% "scalatest"         % scalatestVersion % Test
 )
 

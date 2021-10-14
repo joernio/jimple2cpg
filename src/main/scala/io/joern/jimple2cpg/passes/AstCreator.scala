@@ -264,7 +264,7 @@ class AstCreator(filename: String, global: Global) {
       case x: InstanceOfExpr =>
         Seq(astForUnaryExpr(Operators.instanceOf, x, x.getOp, order, parentUnit))
       case x: LengthExpr =>
-        Seq(astForUnaryExpr("<operator>.lengthOf", x, x.getOp, order, parentUnit))
+        Seq(astForUnaryExpr(Operators.lengthOf, x, x.getOp, order, parentUnit))
       case x: NegExpr => Seq(astForUnaryExpr(Operators.minus, x, x.getOp, order, parentUnit))
       case x =>
         logger.warn(s"Unhandled soot.Expr type ${x.getClass}")
