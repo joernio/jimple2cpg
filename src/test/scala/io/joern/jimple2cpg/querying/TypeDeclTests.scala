@@ -24,7 +24,7 @@ class TypeDeclTests extends JimpleCodeToCpgFixture {
     x.code shouldBe "Bar"
     x.fullName shouldBe "Foo.Bar"
     x.isExternal shouldBe false
-//    x.inheritsFromTypeFullName shouldBe List("Foo.Woo") // TODO: Handle this
+    x.inheritsFromTypeFullName shouldBe List("Foo.Woo")
     x.aliasTypeFullName shouldBe None
     x.order shouldBe 1
     x.filename.startsWith(JFile.separator) shouldBe true

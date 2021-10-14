@@ -102,7 +102,7 @@ class AstCreator(filename: String, global: Global) {
       .order(1) // Jimple always has 1 class per file
       .filename(filename)
       .code(shortName)
-//      .inheritsFromTypeFullName TODO: Handle this with soot.FashHeirarchy
+      .inheritsFromTypeFullName(List(typ.getSootClass.getSuperclass.toString))
       .astParentType("NAMESPACE_BLOCK")
       .astParentFullName(namespaceBlockFullName)
     val methodAsts = withOrder(
@@ -310,7 +310,7 @@ class AstCreator(filename: String, global: Global) {
         .name(x.toString())
         .order(order)
         .argumentIndex(order)
-        .typeFullName(x.getType.toQuotedString)
+        .typeFullName(registerType(x.getType.toQuotedString))
         .lineNumber(line(parentUnit))
         .columnNumber(column(parentUnit))
     )
@@ -335,7 +335,7 @@ class AstCreator(filename: String, global: Global) {
       .argumentIndex(order)
       .methodFullName(s"${method.getDeclaringClass.toString}.${method.getName}:$signature")
       .signature(signature)
-      .typeFullName(method.getDeclaringClass.getType.toQuotedString)
+      .typeFullName(registerType(method.getDeclaringClass.getType.toQuotedString))
       .lineNumber(line(parentUnit))
       .columnNumber(column(parentUnit))
 
@@ -356,7 +356,7 @@ class AstCreator(filename: String, global: Global) {
   private def astForNewExpr(x: AnyNewExpr, order: Int, parentUnit: soot.Unit): Ast = {
     Ast(
       NewUnknown()
-        .typeFullName(x.getType.toQuotedString)
+        .typeFullName(registerType(x.getType.toQuotedString))
         .code("new")
         .order(order)
         .argumentIndex(order)
@@ -378,7 +378,7 @@ class AstCreator(filename: String, global: Global) {
       .code(unaryExpr.toString())
       .dispatchType(DispatchTypes.STATIC_DISPATCH)
       .order(order)
-      .typeFullName(unaryExpr.getType.toQuotedString)
+      .typeFullName(registerType(unaryExpr.getType.toQuotedString))
       .argumentIndex(order)
       .lineNumber(line(parentUnit))
       .columnNumber(column(parentUnit))
@@ -393,7 +393,7 @@ class AstCreator(filename: String, global: Global) {
       NewIdentifier()
         .name("this")
         .code("this")
-        .typeFullName(method.getType.toQuotedString)
+        .typeFullName(registerType(method.getType.toQuotedString))
         .order(0)
         .argumentIndex(0)
     )
@@ -405,7 +405,7 @@ class AstCreator(filename: String, global: Global) {
         NewIdentifier()
           .name("this")
           .code("this")
-          .typeFullName(method.getDeclaringClass.getType.toQuotedString)
+          .typeFullName(registerType(method.getDeclaringClass.getType.toQuotedString))
           .order(0)
           .argumentIndex(0)
       )
@@ -420,7 +420,7 @@ class AstCreator(filename: String, global: Global) {
       NewIdentifier()
         .name(name)
         .code(name)
-        .typeFullName(parameterRef.getType.toQuotedString)
+        .typeFullName(registerType(parameterRef.getType.toQuotedString))
         .order(order)
         .argumentIndex(order)
     )
@@ -441,7 +441,7 @@ class AstCreator(filename: String, global: Global) {
       .code(s"$name = ${initializer.toString()}")
       .order(order)
       .argumentIndex(order)
-      .typeFullName(assignStmt.getLeftOp.getType.toQuotedString)
+      .typeFullName(registerType(assignStmt.getLeftOp.getType.toQuotedString))
 
     val initAsts       = astsForValue(initializer, 2, assignStmt)
     val initializerAst = Seq(callAst(assignment, Seq(identifier) ++ initAsts))
@@ -560,7 +560,7 @@ class AstCreator(filename: String, global: Global) {
       .code(stmt.toString())
       .lineNumber(line(stmt))
       .columnNumber(column(stmt))
-      .typeFullName("void")
+      .typeFullName(registerType("void"))
     Ast(unknown)
       .withChildren(opAst)
   }
@@ -597,7 +597,7 @@ class AstCreator(filename: String, global: Global) {
     val fieldAccessBlock = NewCall()
       .name(Operators.fieldAccess)
       .code(s"${leftOpType.toQuotedString}.${fieldRef.getField.getName}")
-      .typeFullName(fieldRef.getType.toQuotedString)
+      .typeFullName(registerType(fieldRef.getType.toQuotedString))
       .methodFullName(Operators.fieldAccess)
       .dispatchType(DispatchTypes.STATIC_DISPATCH)
       .order(order)
@@ -613,7 +613,7 @@ class AstCreator(filename: String, global: Global) {
         .columnNumber(column(parentUnit))
         .name(leftOpString)
         .code(leftOpString)
-        .typeFullName(leftOpType.toQuotedString),
+        .typeFullName(registerType(leftOpType.toQuotedString)),
       NewFieldIdentifier()
         .order(2)
         .argumentIndex(2)
@@ -641,7 +641,7 @@ class AstCreator(filename: String, global: Global) {
         .columnNumber(column(parentUnit))
         .name(caughtException.toString())
         .code(caughtException.toString())
-        .typeFullName(caughtException.getType.toQuotedString)
+        .typeFullName(registerType(caughtException.getType.toQuotedString))
     )
   }
 
@@ -650,45 +650,44 @@ class AstCreator(filename: String, global: Global) {
       case _: ClassConstant => Ast()
       case _: NullConstant  => Ast()
       case _: IntConstant =>
-        registerType("int")
         Ast(
-          NewLiteral().order(order).argumentIndex(order).code(constant.toString).typeFullName("int")
+          NewLiteral()
+            .order(order)
+            .argumentIndex(order)
+            .code(constant.toString)
+            .typeFullName(registerType("int"))
         )
       case _: LongConstant =>
-        registerType("long")
         Ast(
           NewLiteral()
             .order(order)
             .argumentIndex(order)
             .code(constant.toString)
-            .typeFullName("long")
+            .typeFullName(registerType("long"))
         )
       case _: DoubleConstant =>
-        registerType("double")
         Ast(
           NewLiteral()
             .order(order)
             .argumentIndex(order)
             .code(constant.toString)
-            .typeFullName("double")
+            .typeFullName(registerType("double"))
         )
       case _: FloatConstant =>
-        registerType("float")
         Ast(
           NewLiteral()
             .order(order)
             .argumentIndex(order)
             .code(constant.toString)
-            .typeFullName("float")
+            .typeFullName(registerType("float"))
         )
       case _: StringConstant =>
-        registerType("java.lang.String")
         Ast(
           NewLiteral()
             .order(order)
             .argumentIndex(order)
             .code(constant.toString)
-            .typeFullName("java.lang.String")
+            .typeFullName(registerType("java.lang.String"))
         )
     }
   }
