@@ -439,6 +439,7 @@ class AstCreator(filename: String, global: Global) {
     val assignment = NewCall()
       .name(Operators.assignment)
       .code(s"$name = ${initializer.toString()}")
+      .dispatchType(DispatchTypes.STATIC_DISPATCH)
       .order(order)
       .argumentIndex(order)
       .typeFullName(registerType(assignStmt.getLeftOp.getType.toQuotedString))
