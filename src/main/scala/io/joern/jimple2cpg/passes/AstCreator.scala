@@ -189,7 +189,7 @@ class AstCreator(filename: String, global: Global) {
   }
 
   private def astForMethodBody(body: Body, order: Int): Ast = {
-    val block = NewBlock(order = order, lineNumber = line(body), columnNumber = column(body))
+    val block = NewBlock().order(order).lineNumber(line(body)).columnNumber(column(body))
     Ast(block).withChildren(
       withOrder(body.getUnits.asScala) { (x, order) =>
         astsForStatement(x, order)
@@ -442,7 +442,6 @@ class AstCreator(filename: String, global: Global) {
       .order(order)
       .argumentIndex(order)
       .typeFullName(assignStmt.getLeftOp.getType.toQuotedString)
-      .build
 
     val initAsts       = astsForValue(initializer, 2, assignStmt)
     val initializerAst = Seq(callAst(assignment, Seq(identifier) ++ initAsts))
@@ -605,7 +604,6 @@ class AstCreator(filename: String, global: Global) {
       .argumentIndex(order)
       .lineNumber(line(parentUnit))
       .columnNumber(column(parentUnit))
-      .build
 
     val argAsts = Seq(
       NewIdentifier()
