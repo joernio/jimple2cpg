@@ -3,9 +3,9 @@ package io.joern.jimple2cpg.passes
 import io.shiftleft.codepropertygraph.Cpg
 import io.shiftleft.passes.{DiffGraph, IntervalKeyPool, ParallelCpgPass}
 import org.slf4j.LoggerFactory
-import soot.Scene
-import java.io.{File => JFile}
+import soot.{Scene, SootClass}
 
+import java.io.{File => JFile}
 import java.util.concurrent.ConcurrentHashMap
 import scala.tools.nsc
 
@@ -30,14 +30,23 @@ class AstCreationPass(codePath: String, filenames: List[String], cpg: Cpg, keyPo
   override def partIterator: Iterator[String] = filenames.iterator
 
   override def runOnPart(filename: String): Iterator[DiffGraph] = {
-    val qualifiedClassName = getQualifiedClassPath(filename)
+    val qualifiedClassName           = getQualifiedClassPath(filename)
+    var sootClass: Option[SootClass] = None
     try {
-      new AstCreator(filename, global)
-        .createAst(Scene.v().loadClassAndSupport(qualifiedClassName))
+      sootClass = Option(Scene.v().loadClassAndSupport(qualifiedClassName))
+      sootClass match {
+        case Some(clazz) => new AstCreator(filename, global).createAst(clazz)
+        case None        => null
+      }
     } catch {
       case e: Exception =>
         logger.warn(s"Cannot parse: $filename ($qualifiedClassName)", e)
         Iterator()
+    } finally {
+      sootClass match {
+        case Some(clazz) => Scene.v().removeClass(clazz)
+        case None        =>
+      }
     }
   }
 

@@ -89,11 +89,11 @@ class Jimple2Cpg {
     new MethodDecoratorPass(cpg).createAndApply()
 
     new ContainsEdgePass(cpg).createAndApply()
-    new Linker(cpg).createAndApply()
-    new StaticCallLinker(cpg).createAndApply()
-
     new CfgDominatorPass(cpg).createAndApply()
     new CdgPass(cpg).createAndApply()
+
+    new Linker(cpg).createAndApply()
+    new StaticCallLinker(cpg).createAndApply()
 
     closeSoot()
 
