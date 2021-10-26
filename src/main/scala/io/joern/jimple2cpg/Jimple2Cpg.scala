@@ -72,18 +72,11 @@ class Jimple2Cpg {
         Set(sourceCodePath),
         sourceFileExtensions
       )).distinct
+
       val astCreator = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
       astCreator.createAndApply()
-
       new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
         .createAndApply()
-
-      List(
-        new Base(),
-        new ControlFlow(),
-        new TypeRelations(),
-        new CallGraph()
-      ).foreach(_.create(new LayerCreatorContext(cpg)))
 
       cpg
     } finally {
