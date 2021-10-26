@@ -12,7 +12,7 @@ class MetaDataTests extends JimpleCodeToCpgFixture {
 
   "should contain exactly one node with all mandatory fields set" in {
     val List(x) = cpg.metaData.l
-    x.language shouldBe "JIMPLEPARSER"
+    x.language shouldBe "JAVA"
     x.version shouldBe "0.1"
     x.overlays shouldBe List("semanticcpg")
   }
