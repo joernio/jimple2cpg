@@ -2,14 +2,7 @@ package io.joern.jimple2cpg
 
 import io.joern.jimple2cpg.passes.AstCreationPass
 import io.shiftleft.codepropertygraph.Cpg
-import io.shiftleft.passes.{CpgPassBase, IntervalKeyPool}
-import io.shiftleft.semanticcpg.layers.{
-  Base,
-  CallGraph,
-  ControlFlow,
-  LayerCreatorContext,
-  TypeRelations
-}
+import io.shiftleft.passes.IntervalKeyPool
 import io.shiftleft.semanticcpg.passes.metadata.MetaDataPass
 import io.shiftleft.semanticcpg.passes.typenodes.TypeNodePass
 import io.shiftleft.x2cpg.SourceFiles
