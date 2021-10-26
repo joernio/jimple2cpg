@@ -3,7 +3,7 @@ package io.joern.jimple2cpg.querying
 import io.joern.jimple2cpg.testfixtures.JimpleCodeToCpgFixture
 import io.shiftleft.semanticcpg.language.{NoResolve, _}
 
-class CallGraphTests extends JimpleCodeToCpgFixture {
+class StaticCallGraphTests extends JimpleCodeToCpgFixture {
 
   implicit val resolver: NoResolve.type = NoResolve
 
