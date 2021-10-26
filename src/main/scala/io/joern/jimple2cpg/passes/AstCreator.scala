@@ -318,8 +318,9 @@ class AstCreator(filename: String, global: Global) {
 
   private def astForInvokeExpr(invokeExpr: InvokeExpr, order: Int, parentUnit: soot.Unit): Ast = {
     val dispatchType = invokeExpr match {
-      case _: DynamicInvokeExpr => DispatchTypes.DYNAMIC_DISPATCH
-      case _                    => DispatchTypes.STATIC_DISPATCH
+      case _: DynamicInvokeExpr  => DispatchTypes.DYNAMIC_DISPATCH
+      case _: InstanceInvokeExpr => DispatchTypes.DYNAMIC_DISPATCH
+      case _                     => DispatchTypes.STATIC_DISPATCH
     }
     val method = invokeExpr.getMethod
     val signature =
