@@ -8,17 +8,17 @@ class CfgTests extends JimpleCodeToCpgFixture {
   override val code: String =
     """
       |class Foo {
-      | int foo(int x, int y) {
+      | static int foo(int x, int y) {
       |  if (y < 10)
       |    return -1;
       |  if (x < 10) {
-      |   sink(x);
+      |    sink(x);
       |  }
       |  System.out.println("foo");
       |  return 0;
       | }
       |
-      | void sink(int x) {
+      | static void sink(int x) {
       |   System.out.println(x);
       |   return;
       | }
@@ -45,7 +45,6 @@ class CfgTests extends JimpleCodeToCpgFixture {
       "y = @parameter1: int",
       "x >= 10",
       "y >= 10",
-      "this = @this: Foo",
       "x = @parameter0: int"
     )
   }

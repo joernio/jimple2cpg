@@ -3,17 +3,8 @@ package io.joern.jimple2cpg
 import io.joern.jimple2cpg.passes.AstCreationPass
 import io.shiftleft.codepropertygraph.Cpg
 import io.shiftleft.passes.IntervalKeyPool
-import io.shiftleft.semanticcpg.passes.cfgdominator.CfgDominatorPass
-import io.shiftleft.semanticcpg.passes.codepencegraph.CdgPass
-import io.shiftleft.semanticcpg.passes.containsedges.ContainsEdgePass
-import io.shiftleft.semanticcpg.passes.languagespecific.fuzzyc.MethodStubCreator
-import io.shiftleft.semanticcpg.passes.linking.calllinker.StaticCallLinker
-import io.shiftleft.semanticcpg.passes.linking.linker.Linker
 import io.shiftleft.semanticcpg.passes.metadata.MetaDataPass
-import io.shiftleft.semanticcpg.passes.methoddecorations.MethodDecoratorPass
-import io.shiftleft.semanticcpg.passes.namespacecreator.NamespaceCreator
-import io.shiftleft.semanticcpg.passes.typenodes.{TypeDeclStubCreator, TypeNodePass}
-import io.shiftleft.semanticcpg.passes.{CfgCreationPass, FileCreationPass}
+import io.shiftleft.semanticcpg.passes.typenodes.TypeNodePass
 import io.shiftleft.x2cpg.SourceFiles
 import io.shiftleft.x2cpg.X2Cpg.newEmptyCpg
 import org.slf4j.LoggerFactory
@@ -28,7 +19,7 @@ import scala.language.postfixOps
 import scala.util.{Failure, Success, Using}
 
 object Jimple2Cpg {
-  val language = "JIMPLEPARSER"
+  val language = "JAVA"
 }
 
 class Jimple2Cpg {
@@ -47,57 +38,43 @@ class Jimple2Cpg {
       sourceCodePath: String,
       outputPath: Option[String] = None
   ): Cpg = {
-    configureSoot(sourceCodePath)
+    try {
+      configureSoot(sourceCodePath)
+      val cpg             = newEmptyCpg(outputPath)
+      val metaDataKeyPool = new IntervalKeyPool(1, 100)
+      val typesKeyPool    = new IntervalKeyPool(100, 1000100)
+      val methodKeyPool   = new IntervalKeyPool(first = 1000100, last = Long.MaxValue)
 
-    val cpg             = newEmptyCpg(outputPath)
-    val metaDataKeyPool = new IntervalKeyPool(1, 100)
-    val typesKeyPool    = new IntervalKeyPool(100, 1000100)
-    val methodKeyPool   = new IntervalKeyPool(first = 1000100, last = Long.MaxValue)
+      new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
 
-    new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
+      val sourceFileExtensions  = Set(".class", ".jimple")
+      val archiveFileExtensions = Set(".jar", ".war")
+      // Unpack any archives on the path onto the source code path as project root
+      val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
+      // Load source files and unpack archives if necessary
+      val sourceFileNames = (archives
+        .map(new ZipFile(_))
+        .flatMap(x => {
+          unzipArchive(x, sourceCodePath) match {
+            case Failure(e) =>
+              logger.error(s"Error extracting files from archive at ${x.getName}", e); null
+            case Success(value) => value
+          }
+        })
+        .map(_.getAbsolutePath) ++ SourceFiles.determine(
+        Set(sourceCodePath),
+        sourceFileExtensions
+      )).distinct
 
-    val sourceFileExtensions  = Set(".class", ".jimple")
-    val archiveFileExtensions = Set(".jar", ".war")
-    // Unpack any archives on the path onto the source code path as project root
-    val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
-    // Load source files and unpack archives if necessary
-    val sourceFileNames = (archives
-      .map(new ZipFile(_))
-      .flatMap(x => {
-        unzipArchive(x, sourceCodePath) match {
-          case Failure(e) =>
-            logger.error(s"Error extracting files from archive at ${x.getName}", e); null
-          case Success(value) => value
-        }
-      })
-      .map(_.getAbsolutePath) ++ SourceFiles.determine(
-      Set(sourceCodePath),
-      sourceFileExtensions
-    )).distinct
-    val astCreator = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
-    astCreator.createAndApply()
+      val astCreator = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
+      astCreator.createAndApply()
+      new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
+        .createAndApply()
 
-    new CfgCreationPass(cpg).createAndApply()
-
-    new NamespaceCreator(cpg).createAndApply()
-    new FileCreationPass(cpg).createAndApply()
-
-    new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
-      .createAndApply()
-    new TypeDeclStubCreator(cpg).createAndApply()
-    new MethodStubCreator(cpg).createAndApply()
-    new MethodDecoratorPass(cpg).createAndApply()
-
-    new ContainsEdgePass(cpg).createAndApply()
-    new CfgDominatorPass(cpg).createAndApply()
-    new CdgPass(cpg).createAndApply()
-
-    new Linker(cpg).createAndApply()
-    new StaticCallLinker(cpg).createAndApply()
-
-    closeSoot()
-
-    cpg
+      cpg
+    } finally {
+      closeSoot()
+    }
   }
 
   private def configureSoot(sourceCodePath: String): Unit = {

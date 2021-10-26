@@ -9,7 +9,7 @@ class NamespaceBlockTests extends JimpleCodeToCpgFixture {
     """
       |package foo.bar;
       |class A {
-      | void foo() {}
+      | static void foo() {}
       |}
       |""".stripMargin
 
@@ -25,9 +25,9 @@ class NamespaceBlockTests extends JimpleCodeToCpgFixture {
     x.order shouldBe 1
   }
 
-//  "should allow traversing from namespace block to method" in {
-//    cpg.namespaceBlock.filename(".*.class").typeDecl.method.name.toSet shouldBe Set("foo")
-//  }
+  "should allow traversing from namespace block to method" in {
+    cpg.namespaceBlock.filename(".*.class").typeDecl.method.name.toSet shouldBe Set("foo", "<init>")
+  }
 
   "should allow traversing from namespace block to type declaration" in {
     cpg.namespaceBlock.filename(".*.class").typeDecl.name.l shouldBe List("A")

@@ -3,7 +3,7 @@ organization := "io.joern"
 
 scalaVersion := "2.13.6"
 
-val cpgVersion       = "1.3.373"
+val cpgVersion       = "1.3.392"
 val sootVersion      = "4.2.1"
 val slf4jVersion     = "1.7.32"
 val scalatestVersion = "3.1.1"
