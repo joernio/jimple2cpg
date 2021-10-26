@@ -52,7 +52,7 @@ class CallTests extends JimpleCodeToCpgFixture {
   }
 
   "should allow traversing from call to surrounding method" in {
-    val List(x) = cpg.call("add").method.l
+    val List(x) = cpg.call.nameExact("add").method.l
     x.name shouldBe "main"
   }
 

@@ -2,19 +2,10 @@ package io.joern.jimple2cpg
 
 import io.joern.jimple2cpg.passes.AstCreationPass
 import io.shiftleft.codepropertygraph.Cpg
-import io.shiftleft.passes.IntervalKeyPool
+import io.shiftleft.passes.{CpgPassBase, IntervalKeyPool}
 import io.shiftleft.semanticcpg.layers.{Base, CallGraph, ControlFlow, TypeRelations}
-import io.shiftleft.semanticcpg.passes.cfgdominator.CfgDominatorPass
-import io.shiftleft.semanticcpg.passes.codepencegraph.CdgPass
-import io.shiftleft.semanticcpg.passes.containsedges.ContainsEdgePass
-import io.shiftleft.semanticcpg.passes.languagespecific.fuzzyc.MethodStubCreator
-import io.shiftleft.semanticcpg.passes.linking.calllinker.StaticCallLinker
-import io.shiftleft.semanticcpg.passes.linking.linker.AstLinkerPass
 import io.shiftleft.semanticcpg.passes.metadata.MetaDataPass
-import io.shiftleft.semanticcpg.passes.methoddecorations.MethodDecoratorPass
-import io.shiftleft.semanticcpg.passes.namespacecreator.NamespaceCreator
-import io.shiftleft.semanticcpg.passes.typenodes.{TypeDeclStubCreator, TypeNodePass}
-import io.shiftleft.semanticcpg.passes.{CfgCreationPass, FileCreationPass}
+import io.shiftleft.semanticcpg.passes.typenodes.TypeNodePass
 import io.shiftleft.x2cpg.SourceFiles
 import io.shiftleft.x2cpg.X2Cpg.newEmptyCpg
 import org.slf4j.LoggerFactory
@@ -81,10 +72,14 @@ class Jimple2Cpg {
     new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
       .createAndApply()
 
-    Base.passes(cpg)
-    ControlFlow.passes(cpg)
-    TypeRelations.passes(cpg)
-    CallGraph.passes(cpg)
+    (
+      Base.passes(cpg) ++
+        ControlFlow.passes(cpg) ++
+        TypeRelations.passes(cpg) ++
+        CallGraph.passes(cpg)
+    )
+
+    ControlFlow.passes(cpg).collect { case x: CpgPassBase => x }.foreach(_.createAndApply())
 
     closeSoot()
 
