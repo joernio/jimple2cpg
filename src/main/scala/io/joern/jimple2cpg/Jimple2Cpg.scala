@@ -3,7 +3,13 @@ package io.joern.jimple2cpg
 import io.joern.jimple2cpg.passes.AstCreationPass
 import io.shiftleft.codepropertygraph.Cpg
 import io.shiftleft.passes.{CpgPassBase, IntervalKeyPool}
-import io.shiftleft.semanticcpg.layers.{Base, CallGraph, ControlFlow, TypeRelations}
+import io.shiftleft.semanticcpg.layers.{
+  Base,
+  CallGraph,
+  ControlFlow,
+  LayerCreatorContext,
+  TypeRelations
+}
 import io.shiftleft.semanticcpg.passes.metadata.MetaDataPass
 import io.shiftleft.semanticcpg.passes.typenodes.TypeNodePass
 import io.shiftleft.x2cpg.SourceFiles
@@ -72,12 +78,12 @@ class Jimple2Cpg {
       new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
         .createAndApply()
 
-      Base.passes(cpg) ++
-        ControlFlow.passes(cpg) ++
-        TypeRelations.passes(cpg) ++
-        CallGraph.passes(cpg)
-
-      ControlFlow.passes(cpg).collect { case x: CpgPassBase => x }.foreach(_.createAndApply())
+      List(
+        new Base(),
+        new ControlFlow(),
+        new TypeRelations(),
+        new CallGraph()
+      ).foreach(_.create(new LayerCreatorContext(cpg)))
 
       cpg
     } finally {
