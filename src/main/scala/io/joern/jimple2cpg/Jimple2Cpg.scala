@@ -39,51 +39,50 @@ class Jimple2Cpg {
       sourceCodePath: String,
       outputPath: Option[String] = None
   ): Cpg = {
-    configureSoot(sourceCodePath)
+    try {
+      configureSoot(sourceCodePath)
+      val cpg             = newEmptyCpg(outputPath)
+      val metaDataKeyPool = new IntervalKeyPool(1, 100)
+      val typesKeyPool    = new IntervalKeyPool(100, 1000100)
+      val methodKeyPool   = new IntervalKeyPool(first = 1000100, last = Long.MaxValue)
 
-    val cpg             = newEmptyCpg(outputPath)
-    val metaDataKeyPool = new IntervalKeyPool(1, 100)
-    val typesKeyPool    = new IntervalKeyPool(100, 1000100)
-    val methodKeyPool   = new IntervalKeyPool(first = 1000100, last = Long.MaxValue)
+      new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
 
-    new MetaDataPass(cpg, language, Some(metaDataKeyPool)).createAndApply()
+      val sourceFileExtensions  = Set(".class", ".jimple")
+      val archiveFileExtensions = Set(".jar", ".war")
+      // Unpack any archives on the path onto the source code path as project root
+      val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
+      // Load source files and unpack archives if necessary
+      val sourceFileNames = (archives
+        .map(new ZipFile(_))
+        .flatMap(x => {
+          unzipArchive(x, sourceCodePath) match {
+            case Failure(e) =>
+              logger.error(s"Error extracting files from archive at ${x.getName}", e); null
+            case Success(value) => value
+          }
+        })
+        .map(_.getAbsolutePath) ++ SourceFiles.determine(
+        Set(sourceCodePath),
+        sourceFileExtensions
+      )).distinct
+      val astCreator = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
+      astCreator.createAndApply()
 
-    val sourceFileExtensions  = Set(".class", ".jimple")
-    val archiveFileExtensions = Set(".jar", ".war")
-    // Unpack any archives on the path onto the source code path as project root
-    val archives = SourceFiles.determine(Set(sourceCodePath), archiveFileExtensions)
-    // Load source files and unpack archives if necessary
-    val sourceFileNames = (archives
-      .map(new ZipFile(_))
-      .flatMap(x => {
-        unzipArchive(x, sourceCodePath) match {
-          case Failure(e) =>
-            logger.error(s"Error extracting files from archive at ${x.getName}", e); null
-          case Success(value) => value
-        }
-      })
-      .map(_.getAbsolutePath) ++ SourceFiles.determine(
-      Set(sourceCodePath),
-      sourceFileExtensions
-    )).distinct
-    val astCreator = new AstCreationPass(sourceCodePath, sourceFileNames, cpg, methodKeyPool)
-    astCreator.createAndApply()
+      new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
+        .createAndApply()
 
-    new TypeNodePass(astCreator.global.usedTypes.keys().asScala.toList, cpg, Some(typesKeyPool))
-      .createAndApply()
-
-    (
       Base.passes(cpg) ++
         ControlFlow.passes(cpg) ++
         TypeRelations.passes(cpg) ++
         CallGraph.passes(cpg)
-    )
 
-    ControlFlow.passes(cpg).collect { case x: CpgPassBase => x }.foreach(_.createAndApply())
+      ControlFlow.passes(cpg).collect { case x: CpgPassBase => x }.foreach(_.createAndApply())
 
-    closeSoot()
-
-    cpg
+      cpg
+    } finally {
+      closeSoot()
+    }
   }
 
   private def configureSoot(sourceCodePath: String): Unit = {
