@@ -11,7 +11,7 @@ import scala.tools.nsc
 
 case class Global(
     usedTypes: ConcurrentHashMap[String, Boolean] = new ConcurrentHashMap[String, Boolean](),
-    sootLock: Semaphore = new Semaphore(1),
+    sootLock: Semaphore = new Semaphore(1)
 )
 
 class AstCreationPass(codePath: String, filenames: List[String], cpg: Cpg, keyPool: IntervalKeyPool)
